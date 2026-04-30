@@ -1,0 +1,6 @@
+-- 回滚初始化迁移
+DROP TABLE IF EXISTS request_logs;
+DROP TABLE IF EXISTS models;
+DROP TABLE IF EXISTS channels;
+DROP TABLE IF EXISTS api_keys;
+DROP TABLE IF EXISTS users;
