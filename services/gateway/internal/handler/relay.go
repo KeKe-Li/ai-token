@@ -83,6 +83,8 @@ func (h *RelayHandler) handleNonStream(c *gin.Context, req *adaptor.ChatRequest,
 	latency := int(time.Since(start).Milliseconds())
 
 	h.engine.RecordUsage(relay.UsageRecord{
+		UserID:       c.GetInt64("user_id"),
+		APIKeyID:     c.GetInt64("api_key_id"),
 		ChannelID:    channel.ID,
 		Model:        req.Model,
 		Method:       "POST",
@@ -113,6 +115,8 @@ func (h *RelayHandler) handleStream(c *gin.Context, req *adaptor.ChatRequest, st
 	latency := int(time.Since(start).Milliseconds())
 
 	h.engine.RecordUsage(relay.UsageRecord{
+		UserID:       c.GetInt64("user_id"),
+		APIKeyID:     c.GetInt64("api_key_id"),
 		ChannelID:    channel.ID,
 		Model:        req.Model,
 		Method:       "POST",

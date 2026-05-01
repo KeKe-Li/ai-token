@@ -1,53 +1,57 @@
 # AI Token
 
-面向开发者的 AI 模型聚合中转平台。一个 API，接入所有主流 AI 模型。
+A unified AI model aggregation gateway for developers. One API to access all mainstream AI models.
 
-## 功能
+## Features
 
-- **统一接口** — OpenAI Compatible API，无缝切换 GPT、Claude、Gemini、DeepSeek
-- **智能路由** — 优先级调度 + 加权随机负载均衡
-- **故障切换** — 供应商异常自动冷却并切换备用渠道
-- **流式转发** — 完整支持 SSE 流式响应
-- **用量追踪** — 实时记录 token 消耗、延迟、费用
-- **多供应商** — OpenAI、Anthropic、Google、DeepSeek
+- **Unified API** — OpenAI-compatible interface, seamlessly switch between GPT, Claude, Gemini, DeepSeek
+- **Smart Routing** — Priority-based scheduling with weighted random load balancing
+- **Auto Failover** — Automatic cooldown and channel switching on provider failures
+- **Stream Forwarding** — Full SSE streaming support, token-by-token real-time output
+- **Usage Tracking** — Real-time logging of token consumption, latency, and costs
+- **Multi-Provider** — OpenAI, Anthropic, Google, DeepSeek out of the box
 
-## 技术栈
+## Tech Stack
 
-| 层级 | 技术 |
-|------|------|
-| 前端 | Next.js 15 + TypeScript + Tailwind CSS 4 |
-| 后端 | Go 1.22 + Gin |
-| 数据库 | PostgreSQL 16 |
-| 缓存 | Redis 7 |
-| 部署 | Docker Compose |
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 15 + TypeScript + Tailwind CSS 4 |
+| Backend | Go 1.22+ + Gin |
+| Database | PostgreSQL 16 |
+| Cache | Redis 7 |
+| Deploy | Docker Compose |
 
-## 快速开始
+## Quick Start
 
-### 开发环境
-
-```bash
-# 启动数据库和缓存
-make dev
-
-# 启动后端 (新终端)
-make dev-gateway
-
-# 启动前端 (新终端)
-make dev-web
-```
-
-### Docker 部署
+### Docker (Recommended)
 
 ```bash
+cp .env.example .env
+# Edit .env to add your provider API keys
 docker compose up -d
 ```
 
-访问:
-- 前端: http://localhost:3000
-- API: http://localhost:8080
-- 健康检查: http://localhost:8080/health
+Access:
+- Frontend: http://localhost:3000
+- API Gateway: http://localhost:8080
+- Health Check: http://localhost:8080/health
 
-## API 使用
+### Local Development
+
+```bash
+# Start PostgreSQL and Redis
+make dev
+
+# Start backend (new terminal)
+make dev-gateway
+
+# Start frontend (new terminal)
+make dev-web
+```
+
+## API Usage
+
+Use any OpenAI-compatible SDK — just replace the `base_url`:
 
 ```python
 from openai import OpenAI
@@ -59,7 +63,7 @@ client = OpenAI(
 
 response = client.chat.completions.create(
     model="gpt-4o",
-    messages=[{"role": "user", "content": "你好"}],
+    messages=[{"role": "user", "content": "Hello"}],
     stream=True
 )
 
@@ -67,16 +71,74 @@ for chunk in response:
     print(chunk.choices[0].delta.content, end="")
 ```
 
-## 项目结构
+```typescript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  apiKey: 'sk-your-api-key',
+  baseURL: 'http://localhost:8080/v1',
+});
+
+const stream = await client.chat.completions.create({
+  model: 'claude-sonnet-4-6',
+  messages: [{ role: 'user', content: 'Hello' }],
+  stream: true,
+});
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content || '');
+}
+```
+
+## Project Structure
 
 ```
 ai-token/
-├── apps/web/              # Next.js 前端
-├── services/gateway/      # Go API Gateway
-├── deploy/                # Docker 和部署配置
-├── scripts/               # 开发脚本
-└── docker-compose.yml     # 一键启动
+├── apps/web/                # Next.js frontend
+│   ├── app/                 # Pages (App Router)
+│   ├── components/          # Shared components
+│   ├── lib/                 # Utilities & API client
+│   └── stores/              # Zustand state management
+├── services/gateway/        # Go API Gateway
+│   ├── cmd/server/          # Entry point
+│   ├── internal/
+│   │   ├── config/          # Configuration
+│   │   ├── handler/         # HTTP handlers
+│   │   ├── middleware/      # Auth, rate limit, CORS
+│   │   ├── model/           # Database models & stores
+│   │   ├── relay/           # Core relay engine
+│   │   │   ├── adaptor/     # Provider adaptors
+│   │   │   ├── router.go    # Channel selection algorithm
+│   │   │   ├── relay.go     # Request orchestration
+│   │   │   └── stream.go    # SSE stream forwarding
+│   │   └── router/          # Route registration
+│   └── migrations/          # SQL migrations
+├── deploy/                  # Dockerfiles & nginx config
+├── docker-compose.yml       # One-command full stack
+└── .env.example             # Environment variables template
 ```
+
+## Supported Providers
+
+| Provider | Models | Format |
+|----------|--------|--------|
+| OpenAI | GPT-4o, GPT-4o Mini | Native (passthrough) |
+| Anthropic | Claude Sonnet 4.6, Claude Haiku 4.5 | Messages API → OpenAI |
+| Google | Gemini 2.5 Pro, Gemini 2.5 Flash | Gemini API → OpenAI |
+| DeepSeek | DeepSeek V3, DeepSeek R1 | OpenAI-compatible |
+
+## Environment Variables
+
+See [`.env.example`](.env.example) for the full list. Key variables:
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `GOOGLE_API_KEY` | Google AI API key |
+| `DEEPSEEK_API_KEY` | DeepSeek API key |
+| `JWT_SECRET` | JWT signing secret (change in production) |
+| `DATABASE_URL` | PostgreSQL connection string |
 
 ## License
 

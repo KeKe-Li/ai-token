@@ -1,27 +1,215 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #09090b;
-  --color-foreground: #fafafa;
-  --color-muted: #27272a;
-  --color-muted-foreground: #a1a1aa;
-  --color-card: #18181b;
-  --color-card-foreground: #fafafa;
-  --color-border: #27272a;
-  --color-input: #27272a;
-  --color-primary: #6366f1;
+  --color-background: #050510;
+  --color-foreground: #f0f0f5;
+  --color-muted: #1a1a2e;
+  --color-muted-foreground: #8888aa;
+  --color-card: #0d0d1a;
+  --color-card-foreground: #f0f0f5;
+  --color-border: #1e1e3a;
+  --color-input: #1a1a2e;
+  --color-primary: #7c3aed;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #27272a;
-  --color-secondary-foreground: #fafafa;
-  --color-accent: #27272a;
-  --color-accent-foreground: #fafafa;
+  --color-secondary: #1a1a2e;
+  --color-secondary-foreground: #f0f0f5;
+  --color-accent: #06b6d4;
+  --color-accent-foreground: #f0f0f5;
   --color-destructive: #ef4444;
-  --color-ring: #6366f1;
+  --color-ring: #7c3aed;
   --radius: 0.75rem;
 }
 
+/* 深色主题（默认） */
+:root, .dark {
+  --bg: #050510;
+  --fg: #f0f0f5;
+  --muted-bg: #1a1a2e;
+  --muted-fg: #8888aa;
+  --card-bg: #0d0d1a;
+  --border-c: #1e1e3a;
+}
+
+/* 浅色主题 */
+.light {
+  --bg: #fafbfc;
+  --fg: #0f172a;
+  --muted-bg: #f1f5f9;
+  --muted-fg: #64748b;
+  --card-bg: #ffffff;
+  --border-c: #e2e8f0;
+}
+
 body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.light {
+  --color-background: #fafbfc;
+  --color-foreground: #0f172a;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-border: #e2e8f0;
+  --color-input: #f1f5f9;
+  --color-primary: #7c3aed;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #0f172a;
+  --color-accent: #06b6d4;
+  --color-destructive: #ef4444;
+}
+
+.light .hero-grid {
+  background-image:
+    linear-gradient(rgba(124, 58, 237, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 58, 237, 0.05) 1px, transparent 1px);
+}
+
+.light .hero-glow {
+  background: radial-gradient(ellipse 60% 50% at 50% 40%, rgba(124, 58, 237, 0.08) 0%, rgba(6, 182, 212, 0.03) 40%, transparent 70%);
+}
+
+.light .card-glow {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(124, 58, 237, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.light .card-glow:hover {
+  border-color: rgba(124, 58, 237, 0.3);
+  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.08);
+}
+
+.light .code-block {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-color: #e2e8f0;
+}
+
+.light .gradient-text {
+  background: linear-gradient(135deg, #7c3aed 0%, #06b6d4 50%, #7c3aed 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 4s ease infinite;
+}
+
+.light .stat-glow {
+  text-shadow: none;
+}
+
+.light .provider-badge {
+  background: rgba(124, 58, 237, 0.05);
+  border-color: rgba(124, 58, 237, 0.15);
+}
+
+/* 动画光效网格背景 */
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(124, 58, 237, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 58, 237, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* 径向光晕 */
+.hero-glow {
+  background: radial-gradient(ellipse 60% 50% at 50% 40%, rgba(124, 58, 237, 0.15) 0%, rgba(6, 182, 212, 0.05) 40%, transparent 70%);
+}
+
+/* 渐变文字 */
+.gradient-text {
+  background: linear-gradient(135deg, #7c3aed 0%, #06b6d4 50%, #7c3aed 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 4s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* 发光按钮 */
+.btn-glow {
+  position: relative;
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.3), 0 0 60px rgba(124, 58, 237, 0.1);
+  transition: all 0.3s ease;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 30px rgba(124, 58, 237, 0.5), 0 0 80px rgba(124, 58, 237, 0.2);
+  transform: translateY(-1px);
+}
+
+/* 发光边框卡片 */
+.card-glow {
+  position: relative;
+  background: linear-gradient(135deg, rgba(13, 13, 26, 0.8), rgba(26, 26, 46, 0.4));
+  border: 1px solid rgba(124, 58, 237, 0.1);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+.card-glow:hover {
+  border-color: rgba(124, 58, 237, 0.4);
+  box-shadow: 0 0 30px rgba(124, 58, 237, 0.1), inset 0 0 30px rgba(124, 58, 237, 0.02);
+  transform: translateY(-2px);
+}
+
+/* 统计数字动画 */
+.stat-glow {
+  text-shadow: 0 0 20px rgba(124, 58, 237, 0.5), 0 0 40px rgba(124, 58, 237, 0.2);
+}
+
+/* 浮动动画 */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* 脉冲光点 */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.5); }
+}
+
+/* 流光边框 */
+.border-flow {
+  position: relative;
+  overflow: hidden;
+}
+.border-flow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, #7c3aed, #06b6d4, #7c3aed);
+  background-size: 300% 300%;
+  animation: gradient-shift 4s ease infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* 代码块样式 */
+.code-block {
+  background: linear-gradient(135deg, #0a0a1a 0%, #0d0d25 100%);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  box-shadow: 0 0 40px rgba(124, 58, 237, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* 供应商 logo 光效 */
+.provider-badge {
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.05);
 }

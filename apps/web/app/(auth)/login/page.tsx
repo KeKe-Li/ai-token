@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { api } from "@/lib/api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -12,23 +13,12 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.message || "登录失败");
-        return;
-      }
-
-      const data = await res.json();
+      const data = await api.post<{ token: string; refresh_token: string; user: { id: number; username: string; email: string; role: number; balance: number } }>("/api/auth/login", { email, password });
       localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
       window.location.href = "/dashboard";
-    } catch {
-      setError("网络错误，请重试");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "登录失败");
     }
   }
 

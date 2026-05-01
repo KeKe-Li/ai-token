@@ -19,3 +19,5 @@ test/*
 *.next/
 apps/web/node_modules/
 services/gateway/server/
+*.png
+

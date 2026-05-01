@@ -19,7 +19,7 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{cfg.AllowedOrigins},
+		AllowOrigins:     []string{"http://localhost:3000", "http://127.0.0.1:3000", cfg.AllowedOrigins},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Authorization", "Content-Type"},
 		AllowCredentials: true,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { api } from "@/lib/api";
 
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
@@ -13,21 +14,10 @@ export default function RegisterPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.message || "注册失败");
-        return;
-      }
-
+      await api.post("/api/auth/register", { username, email, password });
       window.location.href = "/login";
-    } catch {
-      setError("网络错误，请重试");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "注册失败");
     }
   }
 
