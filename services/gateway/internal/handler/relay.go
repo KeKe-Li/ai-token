@@ -154,6 +154,8 @@ func (h *RelayHandler) ListModels(c *gin.Context) {
 }
 
 func (h *RelayHandler) Completions(c *gin.Context) {
+	start := time.Now()
+
 	var body map[string]any
 	if err := json.NewDecoder(c.Request.Body).Decode(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "invalid request"}})
@@ -168,11 +170,27 @@ func (h *RelayHandler) Completions(c *gin.Context) {
 		Messages: []adaptor.Message{{Role: "user", Content: prompt}},
 	}
 
-	resp, _, err := h.engine.ChatCompletion(c.Request.Context(), h.channels, req, 2)
+	resp, channel, err := h.engine.ChatCompletion(c.Request.Context(), h.channels, req, 2)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error()}})
 		return
 	}
+
+	latency := int(time.Since(start).Milliseconds())
+
+	h.engine.RecordUsage(relay.UsageRecord{
+		UserID:       c.GetInt64("user_id"),
+		APIKeyID:     c.GetInt64("api_key_id"),
+		ChannelID:    channel.ID,
+		Model:        req.Model,
+		Method:       "POST",
+		Path:         "/v1/completions",
+		StatusCode:   200,
+		InputTokens:  resp.Usage.PromptTokens,
+		OutputTokens: resp.Usage.CompletionTokens,
+		LatencyMs:    latency,
+		IP:           c.ClientIP(),
+	})
 
 	c.JSON(http.StatusOK, resp)
 }

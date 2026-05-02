@@ -29,14 +29,20 @@ type LogWriter interface {
 	WriteLog(ctx context.Context, record *UsageRecord) error
 }
 
-type RelayEngine struct {
-	router    *Router
-	registry  *adaptor.Registry
-	usageCh   chan UsageRecord
-	logWriter LogWriter
+type CooldownStore interface {
+	SetCooldown(ctx context.Context, channelID int64, duration time.Duration) error
+	IsCoolingDown(ctx context.Context, channelID int64) bool
 }
 
-func NewRelayEngine(logWriter LogWriter) *RelayEngine {
+type RelayEngine struct {
+	router        *Router
+	registry      *adaptor.Registry
+	usageCh       chan UsageRecord
+	logWriter     LogWriter
+	cooldownStore CooldownStore
+}
+
+func NewRelayEngine(logWriter LogWriter, cooldownStore CooldownStore) *RelayEngine {
 	registry := adaptor.NewRegistry()
 	registry.Register("openai", adaptor.NewOpenAIAdaptor())
 	registry.Register("anthropic", adaptor.NewAnthropicAdaptor())
@@ -44,10 +50,11 @@ func NewRelayEngine(logWriter LogWriter) *RelayEngine {
 	registry.Register("deepseek", adaptor.NewDeepSeekAdaptor())
 
 	engine := &RelayEngine{
-		router:    NewRouter(),
-		registry:  registry,
-		usageCh:   make(chan UsageRecord, 1024),
-		logWriter: logWriter,
+		router:        NewRouter(cooldownStore),
+		registry:      registry,
+		usageCh:       make(chan UsageRecord, 1024),
+		logWriter:     logWriter,
+		cooldownStore: cooldownStore,
 	}
 
 	go engine.processUsageRecords()
@@ -160,10 +167,11 @@ func (e *RelayEngine) processUsageRecords() {
 }
 
 func (e *RelayEngine) cooldownChannel(channelID int64) {
-	cooldownDuration := 5 * time.Minute
-	_ = cooldownDuration
-	_ = channelID
-	// TODO: Phase 3 实现 Redis 冷却标记
+	if e.cooldownStore != nil {
+		if err := e.cooldownStore.SetCooldown(context.Background(), channelID, 5*time.Minute); err != nil {
+			log.Printf("设置渠道冷却失败: %v", err)
+		}
+	}
 	log.Printf("渠道 #%d 进入冷却期 5 分钟", channelID)
 }
 
