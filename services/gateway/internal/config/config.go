@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 )
@@ -25,7 +26,7 @@ type Config struct {
 }
 
 func Load() *Config {
-	return &Config{
+	cfg := &Config{
 		Port:           getEnv("PORT", "8080"),
 		DatabaseURL:    getEnv("DATABASE_URL", "postgres://aitoken:aitoken@localhost:5432/aitoken?sslmode=disable"),
 		RedisURL:       getEnv("REDIS_URL", "redis://localhost:6379/0"),
@@ -42,6 +43,17 @@ func Load() *Config {
 		DeepSeekKey:      getEnv("DEEPSEEK_API_KEY", ""),
 		DeepSeekBaseURL:  getEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
 	}
+
+	if os.Getenv("GIN_MODE") == "release" {
+		if cfg.JWTSecret == "dev-jwt-secret-change-in-production" {
+			log.Fatal("生产环境必须设置 JWT_SECRET 环境变量")
+		}
+		if cfg.EncryptionKey == "dev-encryption-key-32bytes!!!!!" {
+			log.Fatal("生产环境必须设置 ENCRYPTION_KEY 环境变量")
+		}
+	}
+
+	return cfg
 }
 
 func getEnv(key, defaultVal string) string {

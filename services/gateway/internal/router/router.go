@@ -16,12 +16,18 @@ import (
 )
 
 func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine {
-	r := gin.Default()
+	r := gin.New()
+
+	r.Use(middleware.PanicRecover())
+	r.Use(middleware.RequestID())
+	r.Use(middleware.AccessLog())
+	r.Use(gin.Logger())
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000", "http://127.0.0.1:3000", cfg.AllowedOrigins},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		AllowHeaders:     []string{"Authorization", "Content-Type", "X-Request-ID"},
+		ExposeHeaders:    []string{"X-Request-ID"},
 		AllowCredentials: true,
 	}))
 
@@ -48,10 +54,14 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 
 	// 初始化中转引擎
 	var logWriter relay.LogWriter
+	var cooldownStore relay.CooldownStore
 	if db != nil {
 		logWriter = relay.NewDBLogWriter(db)
 	}
-	engine := relay.NewRelayEngine(logWriter)
+	if rdb != nil {
+		cooldownStore = relay.NewRedisCooldownStore(rdb)
+	}
+	engine := relay.NewRelayEngine(logWriter, cooldownStore)
 	relayHandler := handler.NewRelayHandler(engine)
 	relayHandler.SetChannels(loadChannelsFromEnv(cfg))
 
@@ -61,6 +71,9 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 		v1.Use(middleware.APIKeyAuth(apiKeyStore))
 		if rdb != nil {
 			v1.Use(middleware.RateLimit(rdb, 60))
+		}
+		if db != nil {
+			v1.Use(middleware.BalanceCheck(db))
 		}
 	}
 	{
@@ -106,7 +119,7 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 		admin.Use(middleware.JWTAuth(cfg.JWTSecret))
 		admin.Use(middleware.AdminOnly())
 		if channelStore != nil && modelStore != nil && userStore != nil && logStore != nil {
-			adminHandler := handler.NewAdminHandler(channelStore, modelStore, userStore, logStore)
+			adminHandler := handler.NewAdminHandler(channelStore, modelStore, userStore, logStore, cfg.EncryptionKey)
 			admin.GET("/channels", adminHandler.ListChannels)
 			admin.POST("/channels", adminHandler.CreateChannel)
 			admin.PUT("/channels/:id", adminHandler.UpdateChannel)

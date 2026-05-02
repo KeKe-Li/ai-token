@@ -124,8 +124,9 @@ COMMENT ON COLUMN request_logs.cost IS '本次费用,单位:0.001元';
 COMMENT ON COLUMN request_logs.latency_ms IS '响应延迟,毫秒';
 
 -- 插入默认管理员账户 (密码: admin123, bcrypt哈希)
+-- 默认管理员 密码: Admin@2026!
 INSERT INTO users (username, email, password_hash, role, balance)
-VALUES ('admin', 'admin@aitoken.dev', '$2a$10$placeholder_hash_replace_on_first_login', 10, 999999000);
+VALUES ('admin', 'admin@aitoken.dev', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 10, 999999000);
 
 -- 插入初始模型数据
 INSERT INTO models (model_id, display_name, provider, category, context_length, input_price, output_price, price_unit, capabilities, description) VALUES

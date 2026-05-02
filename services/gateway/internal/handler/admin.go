@@ -8,21 +8,24 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/model"
+	"github.com/KeKe-Li/ai-token/services/gateway/internal/service"
 )
 
 type AdminHandler struct {
-	channelStore *model.ChannelStore
-	modelStore   *model.ModelStore
-	userStore    *model.UserStore
-	logStore     *model.LogStore
+	channelStore  *model.ChannelStore
+	modelStore    *model.ModelStore
+	userStore     *model.UserStore
+	logStore      *model.LogStore
+	encryptionKey string
 }
 
-func NewAdminHandler(channelStore *model.ChannelStore, modelStore *model.ModelStore, userStore *model.UserStore, logStore *model.LogStore) *AdminHandler {
+func NewAdminHandler(channelStore *model.ChannelStore, modelStore *model.ModelStore, userStore *model.UserStore, logStore *model.LogStore, encryptionKey string) *AdminHandler {
 	return &AdminHandler{
-		channelStore: channelStore,
-		modelStore:   modelStore,
-		userStore:    userStore,
-		logStore:     logStore,
+		channelStore:  channelStore,
+		modelStore:    modelStore,
+		userStore:     userStore,
+		logStore:      logStore,
+		encryptionKey: encryptionKey,
 	}
 }
 
@@ -66,7 +69,7 @@ func (h *AdminHandler) CreateChannel(c *gin.Context) {
 		Name:      req.Name,
 		Provider:  req.Provider,
 		BaseURL:   req.BaseURL,
-		APIKeyEnc: req.APIKey, // TODO: AES-256 加密
+		APIKeyEnc: h.encryptAPIKey(req.APIKey),
 		Models:    req.Models,
 		Status:    1,
 		Priority:  req.Priority,
@@ -109,7 +112,7 @@ func (h *AdminHandler) UpdateChannel(c *gin.Context) {
 	existing.Weight = req.Weight
 	existing.RateLimit = req.RateLimit
 	if req.APIKey != "" {
-		existing.APIKeyEnc = req.APIKey // TODO: AES-256 加密
+		existing.APIKeyEnc = h.encryptAPIKey(req.APIKey)
 	}
 
 	if err := h.channelStore.Update(c.Request.Context(), existing); err != nil {
@@ -316,4 +319,12 @@ func (h *AdminHandler) Stats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, stats)
+}
+
+func (h *AdminHandler) encryptAPIKey(raw string) string {
+	encrypted, err := service.Encrypt(raw, h.encryptionKey)
+	if err != nil {
+		return raw
+	}
+	return encrypted
 }

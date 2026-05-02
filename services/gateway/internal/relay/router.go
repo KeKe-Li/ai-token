@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -20,10 +21,12 @@ type Channel struct {
 	CooldownUntil *time.Time
 }
 
-type Router struct{}
+type Router struct {
+	cooldown CooldownStore
+}
 
-func NewRouter() *Router {
-	return &Router{}
+func NewRouter(cooldown CooldownStore) *Router {
+	return &Router{cooldown: cooldown}
 }
 
 func (r *Router) SelectChannel(channels []Channel, model string) (*Channel, error) {
@@ -51,6 +54,10 @@ func (r *Router) filterAvailable(channels []Channel, model string) []Channel {
 		}
 
 		if ch.CooldownUntil != nil && now.Before(*ch.CooldownUntil) {
+			continue
+		}
+
+		if r.cooldown != nil && r.cooldown.IsCoolingDown(context.Background(), ch.ID) {
 			continue
 		}
 
