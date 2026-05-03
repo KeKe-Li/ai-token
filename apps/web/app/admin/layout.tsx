@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useAuthGuard } from "@/lib/auth-guard";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "概览" },
@@ -11,7 +12,10 @@ const NAV_ITEMS = [
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const { checked } = useAuthGuard(true);
   const pathname = usePathname();
+
+  if (!checked) return null;
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">

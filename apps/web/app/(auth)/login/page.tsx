@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { useAuthGuard } from "@/lib/auth-guard";
 
 export default function LoginPage() {
+  const { checked } = useAuthGuard(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+
+  if (!checked) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
