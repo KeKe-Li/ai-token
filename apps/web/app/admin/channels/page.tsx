@@ -16,6 +16,8 @@ export default function ChannelsPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [testing, setTesting] = useState<number | null>(null);
+  const [testResult, setTestResult] = useState<Record<number, { ok: boolean; msg: string }>>({});
   const [form, setForm] = useState({ name: "", provider: "openai", base_url: "https://api.openai.com", api_key: "", models: "", priority: 0, weight: 1 });
 
   useEffect(() => { load(); }, []);
@@ -37,6 +39,36 @@ export default function ChannelsPage() {
       load();
     } catch (err) { alert(err instanceof Error ? err.message : "创建失败"); }
     finally { setLoading(false); }
+  }
+
+  async function handleTest(channelId: number, model: string) {
+    setTesting(channelId);
+    setTestResult((prev) => { const next = { ...prev }; delete next[channelId]; return next; });
+    const apiKey = localStorage.getItem("playground_key");
+    if (!apiKey) {
+      setTestResult((prev) => ({ ...prev, [channelId]: { ok: false, msg: "需先在 Playground 设置 API Key" } }));
+      setTesting(null);
+      return;
+    }
+    const start = Date.now();
+    try {
+      const res = await fetch(`${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080")}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: model || "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], max_tokens: 5 }),
+      });
+      const latency = Date.now() - start;
+      if (res.ok) {
+        setTestResult((prev) => ({ ...prev, [channelId]: { ok: true, msg: `${latency}ms` } }));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setTestResult((prev) => ({ ...prev, [channelId]: { ok: false, msg: err.error?.message || `HTTP ${res.status}` } }));
+      }
+    } catch (err) {
+      setTestResult((prev) => ({ ...prev, [channelId]: { ok: false, msg: String(err) } }));
+    } finally {
+      setTesting(null);
+    }
   }
 
   async function handleDelete(id: number) {
@@ -123,7 +155,17 @@ export default function ChannelsPage() {
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">优先级: {ch.priority} · 权重: {ch.weight}</div>
                   </div>
-                  <button onClick={() => handleDelete(ch.id)} className="shrink-0 rounded-lg border border-destructive/20 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10">删除</button>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    <button onClick={() => handleTest(ch.id, ch.models[0])} disabled={testing === ch.id}
+                      className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                        testResult[ch.id]?.ok === true ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" :
+                        testResult[ch.id]?.ok === false ? "border-red-500/30 text-red-400 bg-red-500/10" :
+                        "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                      }`}>
+                      {testing === ch.id ? "测试中..." : testResult[ch.id] ? (testResult[ch.id].ok ? "✓ 可用" : "✗ 失败") : "测试"}
+                    </button>
+                    <button onClick={() => handleDelete(ch.id)} className="rounded-lg border border-destructive/20 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10">删除</button>
+                  </div>
                 </div>
               </div>
             ))}

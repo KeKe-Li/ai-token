@@ -62,7 +62,7 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 		cooldownStore = relay.NewRedisCooldownStore(rdb)
 	}
 	engine := relay.NewRelayEngine(logWriter, cooldownStore)
-	relayHandler := handler.NewRelayHandler(engine)
+	relayHandler := handler.NewRelayHandler(engine, modelStore)
 	relayHandler.SetChannels(loadChannelsFromEnv(cfg))
 
 	// OpenAI Compatible API（需要 API Key 认证）

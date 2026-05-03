@@ -130,11 +130,48 @@ VALUES ('admin', 'admin@aitoken.dev', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92
 
 -- 插入初始模型数据
 INSERT INTO models (model_id, display_name, provider, category, context_length, input_price, output_price, price_unit, capabilities, description) VALUES
-('gpt-4o', 'GPT-4o', 'openai', 'llm', 128000, 2500, 10000, '1M', ARRAY['vision','function_call','streaming','json_mode'], '最新 GPT-4o 多模态模型'),
-('gpt-4o-mini', 'GPT-4o Mini', 'openai', 'llm', 128000, 150, 600, '1M', ARRAY['vision','function_call','streaming','json_mode'], '轻量级 GPT-4o,性价比高'),
+-- OpenAI GPT-5 系列
+('gpt-5.5', 'GPT-5.5', 'openai', 'llm', 1000000, 2500, 10000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'OpenAI 最新旗舰模型'),
+('gpt-5.4', 'GPT-5.4', 'openai', 'llm', 1000000, 2500, 10000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'OpenAI 旗舰模型'),
+('gpt-5.3-codex', 'GPT-5.3 Codex', 'openai', 'llm', 256000, 2000, 8000, '1M', ARRAY['function_call','streaming','thinking'], 'OpenAI Codex 编程模型'),
+('gpt-5.2', 'GPT-5.2', 'openai', 'llm', 256000, 2000, 8000, '1M', ARRAY['vision','function_call','streaming'], 'OpenAI 高级模型'),
+('gpt-5.1', 'GPT-5.1', 'openai', 'llm', 256000, 2000, 8000, '1M', ARRAY['vision','function_call','streaming'], 'OpenAI 高级模型'),
+('gpt-5', 'GPT-5', 'openai', 'llm', 256000, 2000, 8000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'OpenAI GPT-5'),
+('gpt-5-codex', 'GPT-5 Codex', 'openai', 'llm', 256000, 2000, 8000, '1M', ARRAY['function_call','streaming','thinking'], 'GPT-5 Codex 编程专用'),
+('gpt-5-mini', 'GPT-5 Mini', 'openai', 'llm', 256000, 300, 1200, '1M', ARRAY['vision','function_call','streaming'], 'GPT-5 轻量版'),
+('gpt-5-nano', 'GPT-5 Nano', 'openai', 'llm', 128000, 100, 400, '1M', ARRAY['function_call','streaming'], 'GPT-5 超轻量版'),
+-- OpenAI GPT-4 系列
+('gpt-4o', 'GPT-4o', 'openai', 'llm', 128000, 2500, 10000, '1M', ARRAY['vision','function_call','streaming','json_mode'], 'GPT-4o 多模态模型'),
+('gpt-4o-mini', 'GPT-4o Mini', 'openai', 'llm', 128000, 150, 600, '1M', ARRAY['vision','function_call','streaming','json_mode'], '轻量级 GPT-4o'),
+('gpt-4.1', 'GPT-4.1', 'openai', 'llm', 1000000, 2000, 8000, '1M', ARRAY['vision','function_call','streaming'], 'GPT-4.1 长上下文'),
+('gpt-4.1-mini', 'GPT-4.1 Mini', 'openai', 'llm', 1000000, 400, 1600, '1M', ARRAY['vision','function_call','streaming'], 'GPT-4.1 轻量版'),
+('gpt-4.1-nano', 'GPT-4.1 Nano', 'openai', 'llm', 1000000, 100, 400, '1M', ARRAY['function_call','streaming'], 'GPT-4.1 超轻量版'),
+('gpt-4', 'GPT-4', 'openai', 'llm', 128000, 30000, 60000, '1M', ARRAY['vision','function_call','streaming'], '经典 GPT-4'),
+('gpt-4-turbo', 'GPT-4 Turbo', 'openai', 'llm', 128000, 10000, 30000, '1M', ARRAY['vision','function_call','streaming','json_mode'], 'GPT-4 Turbo'),
+('gpt-3.5-turbo', 'GPT-3.5 Turbo', 'openai', 'llm', 16385, 500, 1500, '1M', ARRAY['function_call','streaming'], '经典 GPT-3.5'),
+-- OpenAI 推理系列
+('o3', 'o3', 'openai', 'llm', 200000, 10000, 40000, '1M', ARRAY['streaming','thinking'], 'OpenAI o3 推理模型'),
+('o3-mini', 'o3 Mini', 'openai', 'llm', 200000, 1100, 4400, '1M', ARRAY['streaming','thinking'], 'o3 轻量推理'),
+('o4-mini', 'o4 Mini', 'openai', 'llm', 200000, 1100, 4400, '1M', ARRAY['streaming','thinking'], 'o4 轻量推理'),
+-- Anthropic Claude Opus 系列
+('claude-opus-4-7', 'Claude Opus 4.7', 'anthropic', 'llm', 200000, 15000, 75000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Anthropic 最强旗舰模型'),
+('claude-opus-4-6', 'Claude Opus 4.6', 'anthropic', 'llm', 200000, 15000, 75000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Claude Opus 4.6'),
+('claude-opus-4-5-20251101', 'Claude Opus 4.5', 'anthropic', 'llm', 200000, 15000, 75000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Claude Opus 4.5'),
+('claude-opus-4-20250514', 'Claude Opus 4', 'anthropic', 'llm', 200000, 15000, 75000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Claude Opus 4'),
+('claude-opus-4-1-20250805', 'Claude Opus 4.1', 'anthropic', 'llm', 200000, 15000, 75000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Claude Opus 4.1'),
+-- Anthropic Claude Sonnet 系列
 ('claude-sonnet-4-6', 'Claude Sonnet 4.6', 'anthropic', 'llm', 200000, 3000, 15000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Anthropic 最新编程模型'),
+('claude-sonnet-4-5-20250929', 'Claude Sonnet 4.5', 'anthropic', 'llm', 200000, 3000, 15000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Claude Sonnet 4.5'),
+('claude-sonnet-4-20250514', 'Claude Sonnet 4', 'anthropic', 'llm', 200000, 3000, 15000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Claude Sonnet 4'),
+('claude-3-7-sonnet-20250219', 'Claude 3.7 Sonnet', 'anthropic', 'llm', 200000, 3000, 15000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Claude 3.7 Sonnet'),
+('claude-3-5-sonnet-20241022', 'Claude 3.5 Sonnet', 'anthropic', 'llm', 200000, 3000, 15000, '1M', ARRAY['vision','function_call','streaming'], 'Claude 3.5 Sonnet'),
+-- Anthropic Claude Haiku 系列
 ('claude-haiku-4-5', 'Claude Haiku 4.5', 'anthropic', 'llm', 200000, 800, 4000, '1M', ARRAY['vision','function_call','streaming'], 'Anthropic 轻量快速模型'),
-('gemini-2.5-pro', 'Gemini 2.5 Pro', 'google', 'llm', 1000000, 1250, 10000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Google 最新旗舰模型,100万上下文'),
-('gemini-2.5-flash', 'Gemini 2.5 Flash', 'google', 'llm', 1000000, 150, 600, '1M', ARRAY['vision','function_call','streaming'], 'Google 快速模型'),
+('claude-haiku-4-5-20251001', 'Claude Haiku 4.5 (Oct)', 'anthropic', 'llm', 200000, 800, 4000, '1M', ARRAY['vision','function_call','streaming'], 'Claude Haiku 4.5 稳定版'),
+('claude-3-5-haiku-20241022', 'Claude 3.5 Haiku', 'anthropic', 'llm', 200000, 250, 1250, '1M', ARRAY['vision','streaming'], 'Claude 3.5 Haiku'),
+-- DeepSeek
 ('deepseek-chat', 'DeepSeek V3', 'deepseek', 'llm', 64000, 270, 1100, '1M', ARRAY['function_call','streaming','json_mode'], 'DeepSeek 通用对话模型'),
-('deepseek-reasoner', 'DeepSeek R1', 'deepseek', 'llm', 64000, 550, 2190, '1M', ARRAY['streaming','thinking'], 'DeepSeek 深度推理模型');
+('deepseek-reasoner', 'DeepSeek R1', 'deepseek', 'llm', 64000, 550, 2190, '1M', ARRAY['streaming','thinking'], 'DeepSeek 深度推理模型'),
+-- Google
+('gemini-2.5-pro', 'Gemini 2.5 Pro', 'google', 'llm', 1000000, 1250, 10000, '1M', ARRAY['vision','function_call','streaming','thinking'], 'Google 旗舰模型,100万上下文'),
+('gemini-2.5-flash', 'Gemini 2.5 Flash', 'google', 'llm', 1000000, 150, 600, '1M', ARRAY['vision','function_call','streaming'], 'Google 快速模型');

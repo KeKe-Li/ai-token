@@ -1,9 +1,11 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useAuthGuard } from "@/lib/auth-guard";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "概览" },
+  { href: "/dashboard/playground", label: "Playground" },
   { href: "/dashboard/keys", label: "API Keys" },
   { href: "/dashboard/logs", label: "调用日志" },
   { href: "/dashboard/usage", label: "用量统计" },
@@ -11,7 +13,10 @@ const NAV_ITEMS = [
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { checked } = useAuthGuard(true);
   const pathname = usePathname();
+
+  if (!checked) return null;
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">

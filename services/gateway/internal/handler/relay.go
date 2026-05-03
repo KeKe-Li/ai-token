@@ -7,18 +7,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/KeKe-Li/ai-token/services/gateway/internal/model"
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/relay"
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/relay/adaptor"
 )
 
 type RelayHandler struct {
-	engine   *relay.RelayEngine
-	channels []relay.Channel
+	engine     *relay.RelayEngine
+	channels   []relay.Channel
+	modelStore *model.ModelStore
 }
 
-func NewRelayHandler(engine *relay.RelayEngine) *RelayHandler {
+func NewRelayHandler(engine *relay.RelayEngine, modelStore *model.ModelStore) *RelayHandler {
 	return &RelayHandler{
-		engine: engine,
+		engine:     engine,
+		modelStore: modelStore,
 	}
 }
 
@@ -136,21 +139,42 @@ func (h *RelayHandler) ListModels(c *gin.Context) {
 		OwnedBy string `json:"owned_by"`
 	}
 
-	models := []modelObject{
-		{ID: "gpt-4o", Object: "model", Created: 1700000000, OwnedBy: "openai"},
-		{ID: "gpt-4o-mini", Object: "model", Created: 1700000000, OwnedBy: "openai"},
-		{ID: "claude-sonnet-4-6", Object: "model", Created: 1700000000, OwnedBy: "anthropic"},
-		{ID: "claude-haiku-4-5", Object: "model", Created: 1700000000, OwnedBy: "anthropic"},
-		{ID: "gemini-2.5-pro", Object: "model", Created: 1700000000, OwnedBy: "google"},
-		{ID: "gemini-2.5-flash", Object: "model", Created: 1700000000, OwnedBy: "google"},
-		{ID: "deepseek-chat", Object: "model", Created: 1700000000, OwnedBy: "deepseek"},
-		{ID: "deepseek-reasoner", Object: "model", Created: 1700000000, OwnedBy: "deepseek"},
+	// 优先从数据库读取
+	if h.modelStore != nil {
+		dbModels, err := h.modelStore.List(c.Request.Context())
+		if err == nil && len(dbModels) > 0 {
+			result := make([]modelObject, len(dbModels))
+			for i, m := range dbModels {
+				result[i] = modelObject{
+					ID:      m.ModelID,
+					Object:  "model",
+					Created: m.CreatedAt.Unix(),
+					OwnedBy: m.Provider,
+				}
+			}
+			c.JSON(http.StatusOK, gin.H{"object": "list", "data": result})
+			return
+		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   models,
-	})
+	// 降级：从渠道配置中聚合所有模型
+	seen := make(map[string]bool)
+	var result []modelObject
+	for _, ch := range h.channels {
+		for _, m := range ch.Models {
+			if !seen[m] {
+				seen[m] = true
+				result = append(result, modelObject{
+					ID:      m,
+					Object:  "model",
+					Created: 1700000000,
+					OwnedBy: ch.Provider,
+				})
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"object": "list", "data": result})
 }
 
 func (h *RelayHandler) Completions(c *gin.Context) {
