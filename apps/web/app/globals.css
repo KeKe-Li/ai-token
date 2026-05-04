@@ -175,6 +175,15 @@ body {
   animation: float 6s ease-in-out infinite;
 }
 
+/* Toast 滑入动画 */
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up {
+  animation: slide-up 0.25s ease-out;
+}
+
 /* 脉冲光点 */
 @keyframes pulse-dot {
   0%, 100% { opacity: 0.3; transform: scale(1); }

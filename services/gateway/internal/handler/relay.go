@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -10,23 +13,47 @@ import (
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/model"
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/relay"
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/relay/adaptor"
+	"github.com/KeKe-Li/ai-token/services/gateway/internal/service"
 )
 
 type RelayHandler struct {
-	engine     *relay.RelayEngine
-	channels   []relay.Channel
-	modelStore *model.ModelStore
+	engine        *relay.RelayEngine
+	envChannels   []relay.Channel
+	channelStore  *model.ChannelStore
+	modelStore    *model.ModelStore
+	encryptionKey string
 }
 
-func NewRelayHandler(engine *relay.RelayEngine, modelStore *model.ModelStore) *RelayHandler {
+func NewRelayHandler(engine *relay.RelayEngine, modelStore *model.ModelStore, channelStore *model.ChannelStore, encryptionKey string) *RelayHandler {
 	return &RelayHandler{
-		engine:     engine,
-		modelStore: modelStore,
+		engine:        engine,
+		modelStore:    modelStore,
+		channelStore:  channelStore,
+		encryptionKey: encryptionKey,
 	}
 }
 
 func (h *RelayHandler) SetChannels(channels []relay.Channel) {
-	h.channels = channels
+	h.envChannels = channels
+}
+
+func (h *RelayHandler) loadChannels(ctx context.Context) []relay.Channel {
+	if h.channelStore != nil {
+		dbChannels, err := h.channelStore.List(ctx)
+		if err == nil && len(dbChannels) > 0 {
+			channels := make([]relay.Channel, 0, len(dbChannels))
+			for _, ch := range dbChannels {
+				relayChannel, err := service.BuildRelayChannel(ch, h.encryptionKey)
+				if err != nil {
+					log.Printf("跳过无效数据库渠道 #%d (%s): %v", ch.ID, ch.Name, err)
+					continue
+				}
+				channels = append(channels, relayChannel)
+			}
+			return channels
+		}
+	}
+	return h.envChannels
 }
 
 func (h *RelayHandler) ChatCompletions(c *gin.Context) {
@@ -61,6 +88,17 @@ func (h *RelayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
+	if !h.isRequestModelAllowed(c, req.Model) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"message": "API Key 不允许访问模型 " + req.Model,
+				"type":    "permission_error",
+				"code":    "model_not_allowed",
+			},
+		})
+		return
+	}
+
 	start := time.Now()
 
 	if req.Stream {
@@ -72,7 +110,7 @@ func (h *RelayHandler) ChatCompletions(c *gin.Context) {
 }
 
 func (h *RelayHandler) handleNonStream(c *gin.Context, req *adaptor.ChatRequest, start time.Time) {
-	resp, channel, err := h.engine.ChatCompletion(c.Request.Context(), h.channels, req, 2)
+	resp, channel, err := h.engine.ChatCompletion(c.Request.Context(), h.loadChannels(c.Request.Context()), req, 2)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
@@ -103,7 +141,7 @@ func (h *RelayHandler) handleNonStream(c *gin.Context, req *adaptor.ChatRequest,
 }
 
 func (h *RelayHandler) handleStream(c *gin.Context, req *adaptor.ChatRequest, start time.Time) {
-	stream, channel, err := h.engine.ChatCompletionStream(c.Request.Context(), h.channels, req, 2)
+	stream, channel, err := h.engine.ChatCompletionStream(c.Request.Context(), h.loadChannels(c.Request.Context()), req, 2)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
@@ -114,7 +152,7 @@ func (h *RelayHandler) handleStream(c *gin.Context, req *adaptor.ChatRequest, st
 		return
 	}
 
-	chunkCount, _ := relay.WriteStreamResponse(c, stream)
+	streamResult := relay.WriteStreamResponse(c, stream)
 	latency := int(time.Since(start).Milliseconds())
 
 	h.engine.RecordUsage(relay.UsageRecord{
@@ -125,7 +163,8 @@ func (h *RelayHandler) handleStream(c *gin.Context, req *adaptor.ChatRequest, st
 		Method:       "POST",
 		Path:         "/v1/chat/completions",
 		StatusCode:   200,
-		OutputTokens: chunkCount,
+		InputTokens:  streamResult.InputTokens,
+		OutputTokens: streamResult.OutputTokens,
 		LatencyMs:    latency,
 		IP:           c.ClientIP(),
 	})
@@ -160,7 +199,7 @@ func (h *RelayHandler) ListModels(c *gin.Context) {
 	// 降级：从渠道配置中聚合所有模型
 	seen := make(map[string]bool)
 	var result []modelObject
-	for _, ch := range h.channels {
+	for _, ch := range h.loadChannels(c.Request.Context()) {
 		for _, m := range ch.Models {
 			if !seen[m] {
 				seen[m] = true
@@ -194,7 +233,18 @@ func (h *RelayHandler) Completions(c *gin.Context) {
 		Messages: []adaptor.Message{{Role: "user", Content: prompt}},
 	}
 
-	resp, channel, err := h.engine.ChatCompletion(c.Request.Context(), h.channels, req, 2)
+	if !h.isRequestModelAllowed(c, req.Model) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": gin.H{
+				"message": "API Key 不允许访问模型 " + req.Model,
+				"type":    "permission_error",
+				"code":    "model_not_allowed",
+			},
+		})
+		return
+	}
+
+	resp, channel, err := h.engine.ChatCompletion(c.Request.Context(), h.loadChannels(c.Request.Context()), req, 2)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error()}})
 		return
@@ -217,4 +267,35 @@ func (h *RelayHandler) Completions(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, resp)
+}
+
+func (h *RelayHandler) isRequestModelAllowed(c *gin.Context, model string) bool {
+	raw, exists := c.Get("allowed_models")
+	if !exists || raw == nil {
+		return true
+	}
+	allowed, ok := raw.([]string)
+	if !ok {
+		return true
+	}
+	return modelAllowed(model, allowed)
+}
+
+func modelAllowed(model string, allowed []string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, item := range allowed {
+		pattern := strings.TrimSpace(item)
+		if pattern == "" {
+			continue
+		}
+		if pattern == "*" || pattern == model {
+			return true
+		}
+		if strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
+			return true
+		}
+	}
+	return false
 }

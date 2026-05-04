@@ -78,8 +78,9 @@ func (h *UserHandler) ListKeys(c *gin.Context) {
 }
 
 type createKeyRequest struct {
-	Name   string   `json:"name" binding:"required"`
-	Models []string `json:"models"`
+	Name      string     `json:"name" binding:"required"`
+	Models    []string   `json:"models"`
+	ExpiresAt *time.Time `json:"expires_at"`
 }
 
 func (h *UserHandler) CreateKey(c *gin.Context) {
@@ -91,15 +92,15 @@ func (h *UserHandler) CreateKey(c *gin.Context) {
 		return
 	}
 
-	apiKey, rawKey, err := h.apiKeyStore.Create(c.Request.Context(), userID, req.Name, req.Models)
+	apiKey, rawKey, err := h.apiKeyStore.Create(c.Request.Context(), userID, req.Name, req.Models, req.ExpiresAt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建密钥失败"})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"key":  rawKey,
-		"data": apiKey,
+		"key":     rawKey,
+		"data":    apiKey,
 		"message": "密钥已创建，请立即保存，此后无法再次查看完整密钥",
 	})
 }

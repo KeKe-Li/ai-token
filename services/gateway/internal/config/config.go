@@ -23,6 +23,10 @@ type Config struct {
 	GoogleBaseURL   string
 	DeepSeekKey     string
 	DeepSeekBaseURL string
+
+	// GitHub OAuth
+	GitHubClientID     string
+	GitHubClientSecret string
 }
 
 func Load() *Config {
@@ -42,6 +46,9 @@ func Load() *Config {
 		GoogleBaseURL:    getEnv("GOOGLE_BASE_URL", "https://generativelanguage.googleapis.com"),
 		DeepSeekKey:      getEnv("DEEPSEEK_API_KEY", ""),
 		DeepSeekBaseURL:  getEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+
+		GitHubClientID:     getEnv("GITHUB_CLIENT_ID", ""),
+		GitHubClientSecret: getEnv("GITHUB_CLIENT_SECRET", ""),
 	}
 
 	if os.Getenv("GIN_MODE") == "release" {

@@ -62,7 +62,7 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 		cooldownStore = relay.NewRedisCooldownStore(rdb)
 	}
 	engine := relay.NewRelayEngine(logWriter, cooldownStore)
-	relayHandler := handler.NewRelayHandler(engine, modelStore)
+	relayHandler := handler.NewRelayHandler(engine, modelStore, channelStore, cfg.EncryptionKey)
 	relayHandler.SetChannels(loadChannelsFromEnv(cfg))
 
 	// OpenAI Compatible API（需要 API Key 认证）
@@ -94,6 +94,10 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/refresh", authHandler.Refresh)
+
+			oauthHandler := handler.NewOAuthHandler(userStore, cfg)
+			auth.GET("/github", oauthHandler.GitHubLogin)
+			auth.GET("/github/callback", oauthHandler.GitHubCallback)
 		} else {
 			auth.POST("/register", placeholder("register"))
 			auth.POST("/login", placeholder("login"))
@@ -122,6 +126,7 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 			adminHandler := handler.NewAdminHandler(channelStore, modelStore, userStore, logStore, cfg.EncryptionKey)
 			admin.GET("/channels", adminHandler.ListChannels)
 			admin.POST("/channels", adminHandler.CreateChannel)
+			admin.POST("/channels/:id/test", adminHandler.TestChannel)
 			admin.PUT("/channels/:id", adminHandler.UpdateChannel)
 			admin.DELETE("/channels/:id", adminHandler.DeleteChannel)
 			admin.GET("/models", adminHandler.ListModels)
