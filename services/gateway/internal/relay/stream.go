@@ -1,15 +1,22 @@
 package relay
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/relay/adaptor"
 )
 
-func WriteStreamResponse(c *gin.Context, stream <-chan adaptor.StreamChunk) (int, int) {
+type StreamResult struct {
+	InputTokens  int
+	OutputTokens int
+}
+
+func WriteStreamResponse(c *gin.Context, stream <-chan adaptor.StreamChunk) StreamResult {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -19,11 +26,11 @@ func WriteStreamResponse(c *gin.Context, stream <-chan adaptor.StreamChunk) (int
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
-		return 0, 0
+		return StreamResult{}
 	}
 
-	totalOutput := 0
-	chunkCount := 0
+	result := StreamResult{}
+	outputChunks := 0
 
 	for chunk := range stream {
 		if chunk.Error != nil {
@@ -42,10 +49,42 @@ func WriteStreamResponse(c *gin.Context, stream <-chan adaptor.StreamChunk) (int
 		if len(chunk.Data) > 0 {
 			c.Writer.Write(chunk.Data)
 			flusher.Flush()
-			chunkCount++
-			totalOutput += len(chunk.Data)
+			outputChunks++
+
+			if usage := extractUsageFromChunk(chunk.Data); usage != nil {
+				result.InputTokens = usage.PromptTokens
+				result.OutputTokens = usage.CompletionTokens
+			}
 		}
 	}
 
-	return chunkCount, totalOutput
+	if result.OutputTokens == 0 {
+		result.OutputTokens = estimateTokens(outputChunks)
+	}
+
+	return result
+}
+
+func extractUsageFromChunk(data []byte) *adaptor.Usage {
+	line := string(data)
+	if !strings.HasPrefix(line, "data: ") {
+		return nil
+	}
+	jsonStr := strings.TrimPrefix(line, "data: ")
+	jsonStr = strings.TrimSpace(jsonStr)
+
+	var chunk struct {
+		Usage *adaptor.Usage `json:"usage"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &chunk); err != nil {
+		return nil
+	}
+	if chunk.Usage != nil && chunk.Usage.TotalTokens > 0 {
+		return chunk.Usage
+	}
+	return nil
+}
+
+func estimateTokens(chunks int) int {
+	return chunks * 2
 }

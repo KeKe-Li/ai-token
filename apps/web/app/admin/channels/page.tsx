@@ -44,26 +44,22 @@ export default function ChannelsPage() {
   async function handleTest(channelId: number, model: string) {
     setTesting(channelId);
     setTestResult((prev) => { const next = { ...prev }; delete next[channelId]; return next; });
-    const apiKey = localStorage.getItem("playground_key");
-    if (!apiKey) {
-      setTestResult((prev) => ({ ...prev, [channelId]: { ok: false, msg: "需先在 Playground 设置 API Key" } }));
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setTestResult((prev) => ({ ...prev, [channelId]: { ok: false, msg: "登录状态已失效" } }));
       setTesting(null);
       return;
     }
-    const start = Date.now();
     try {
-      const res = await fetch(`${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080")}/v1/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: model || "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], max_tokens: 5 }),
-      });
-      const latency = Date.now() - start;
-      if (res.ok) {
-        setTestResult((prev) => ({ ...prev, [channelId]: { ok: true, msg: `${latency}ms` } }));
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setTestResult((prev) => ({ ...prev, [channelId]: { ok: false, msg: err.error?.message || `HTTP ${res.status}` } }));
-      }
+      const res = await api.post<{ ok: boolean; status: number; latency_ms: number; message: string }>(
+        `/api/admin/channels/${channelId}/test`,
+        { model: model || "gpt-4o-mini" },
+        token,
+      );
+      setTestResult((prev) => ({
+        ...prev,
+        [channelId]: { ok: res.ok, msg: res.ok ? `${res.latency_ms}ms` : res.message },
+      }));
     } catch (err) {
       setTestResult((prev) => ({ ...prev, [channelId]: { ok: false, msg: String(err) } }));
     } finally {
@@ -164,6 +160,11 @@ export default function ChannelsPage() {
                       }`}>
                       {testing === ch.id ? "测试中..." : testResult[ch.id] ? (testResult[ch.id].ok ? "✓ 可用" : "✗ 失败") : "测试"}
                     </button>
+                    {testResult[ch.id]?.msg && (
+                      <div className="max-w-32 truncate text-right text-[10px] text-muted-foreground" title={testResult[ch.id].msg}>
+                        {testResult[ch.id].msg}
+                      </div>
+                    )}
                     <button onClick={() => handleDelete(ch.id)} className="rounded-lg border border-destructive/20 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10">删除</button>
                   </div>
                 </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { UsageChart } from "@/components/dashboard/usage-chart";
 
 type DashboardData = {
   balance: number;
@@ -29,6 +30,10 @@ export default function DashboardPage() {
         <StatsCard label="累计消费" value={`¥${data ? (data.used_amount / 1000).toFixed(2) : "0.00"}`} />
         <StatsCard label="累计请求" value={String(data?.request_count ?? 0)} />
         <StatsCard label="可用模型" value="8" />
+      </div>
+
+      <div className="mt-8">
+        <UsageChart />
       </div>
 
       {data?.usage && data.usage.length > 0 && (

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -136,6 +138,47 @@ func (h *AdminHandler) DeleteChannel(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "渠道已删除"})
+}
+
+func (h *AdminHandler) TestChannel(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 ID"})
+		return
+	}
+
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误: " + err.Error()})
+		return
+	}
+
+	ch, err := h.channelStore.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "渠道不存在"})
+		return
+	}
+
+	apiKey, err := service.Decrypt(ch.APIKeyEnc, h.encryptionKey)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":      false,
+			"status":  0,
+			"message": "渠道密钥解密失败，请重新保存渠道密钥",
+		})
+		return
+	}
+
+	ok, statusCode, latency, message := service.ProbeChannelDetailed(ch.Provider, ch.BaseURL, apiKey)
+	c.JSON(http.StatusOK, gin.H{
+		"ok":         ok,
+		"status":     statusCode,
+		"latency_ms": latency,
+		"message":    message,
+		"model":      req.Model,
+	})
 }
 
 // ===== 模型管理 =====

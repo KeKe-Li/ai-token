@@ -6,12 +6,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/config"
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/model"
 	"github.com/KeKe-Li/ai-token/services/gateway/internal/router"
+	"github.com/KeKe-Li/ai-token/services/gateway/internal/service"
 )
 
 func main() {
@@ -39,6 +41,13 @@ func main() {
 			defer rdb.Close()
 			log.Println("Redis 连接成功")
 		}
+	}
+
+	// 启动渠道健康检测
+	if db != nil {
+		checker := service.NewHealthChecker(db, 5*time.Minute)
+		checker.Start()
+		defer checker.Stop()
 	}
 
 	r := router.Setup(cfg, db, rdb)

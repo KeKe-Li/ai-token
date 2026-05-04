@@ -31,17 +31,17 @@ func NewAPIKeyStore(db *pgxpool.Pool) *APIKeyStore {
 	return &APIKeyStore{db: db}
 }
 
-func (s *APIKeyStore) Create(ctx context.Context, userID int64, name string, models []string) (*APIKey, string, error) {
+func (s *APIKeyStore) Create(ctx context.Context, userID int64, name string, models []string, expiresAt *time.Time) (*APIKey, string, error) {
 	rawKey := generateAPIKey()
 	keyHash := hashKey(rawKey)
 	keyPrefix := rawKey[:12]
 
 	var apiKey APIKey
 	err := s.db.QueryRow(ctx,
-		`INSERT INTO api_keys (user_id, name, key_hash, key_prefix, models)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO api_keys (user_id, name, key_hash, key_prefix, models, expires_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id, user_id, name, key_prefix, status, models, expires_at, created_at`,
-		userID, name, keyHash, keyPrefix, models,
+		userID, name, keyHash, keyPrefix, models, expiresAt,
 	).Scan(&apiKey.ID, &apiKey.UserID, &apiKey.Name, &apiKey.KeyPrefix,
 		&apiKey.Status, &apiKey.Models, &apiKey.ExpiresAt, &apiKey.CreatedAt)
 	if err != nil {

@@ -48,7 +48,7 @@ func (s *ChannelStore) Create(ctx context.Context, ch *Channel) error {
 
 func (s *ChannelStore) List(ctx context.Context) ([]Channel, error) {
 	rows, err := s.db.Query(ctx,
-		`SELECT id, name, provider, base_url, models, status, priority, weight, rate_limit, cooldown_until, created_at, updated_at
+		`SELECT id, name, provider, base_url, api_key_enc, models, status, priority, weight, rate_limit, cooldown_until, created_at, updated_at
 		 FROM channels ORDER BY priority DESC, id ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list channels: %w", err)
@@ -59,7 +59,7 @@ func (s *ChannelStore) List(ctx context.Context) ([]Channel, error) {
 	for rows.Next() {
 		var ch Channel
 		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Provider, &ch.BaseURL,
-			&ch.Models, &ch.Status, &ch.Priority, &ch.Weight, &ch.RateLimit,
+			&ch.APIKeyEnc, &ch.Models, &ch.Status, &ch.Priority, &ch.Weight, &ch.RateLimit,
 			&ch.CooldownUntil, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan channel: %w", err)
 		}
