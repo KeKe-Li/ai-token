@@ -10,19 +10,24 @@ import (
 )
 
 type UsageRecord struct {
-	UserID      int64
-	APIKeyID    int64
-	ChannelID   int64
-	Model       string
-	Method      string
-	Path        string
-	StatusCode  int
-	InputTokens int
-	OutputTokens int
-	Cost        int64
-	LatencyMs   int
-	Error       string
-	IP          string
+	UserID          int64
+	APIKeyID        int64
+	ChannelID       int64
+	Model           string
+	Method          string
+	Path            string
+	StatusCode      int
+	InputTokens     int
+	OutputTokens    int
+	Cost            int64
+	ReservedAmount  int64
+	WalletHoldID    int64
+	LatencyMs       int
+	Error           string
+	IP              string
+	EstimatedTokens bool
+	BillingStatus   string
+	BillingNote     string
 }
 
 type LogWriter interface {

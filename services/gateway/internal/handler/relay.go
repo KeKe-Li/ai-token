@@ -17,19 +17,28 @@ import (
 )
 
 type RelayHandler struct {
-	engine        *relay.RelayEngine
-	envChannels   []relay.Channel
-	channelStore  *model.ChannelStore
-	modelStore    *model.ModelStore
-	encryptionKey string
+	engine          *relay.RelayEngine
+	envChannels     []relay.Channel
+	channelStore    *model.ChannelStore
+	modelStore      *model.ModelStore
+	userStore       *model.UserStore
+	pricingProvider relay.PricingProvider
+	encryptionKey   string
 }
 
-func NewRelayHandler(engine *relay.RelayEngine, modelStore *model.ModelStore, channelStore *model.ChannelStore, encryptionKey string) *RelayHandler {
+type preAuthorizationResult struct {
+	ReservedAmount int64
+	WalletHoldID   int64
+}
+
+func NewRelayHandler(engine *relay.RelayEngine, modelStore *model.ModelStore, channelStore *model.ChannelStore, userStore *model.UserStore, pricingProvider relay.PricingProvider, encryptionKey string) *RelayHandler {
 	return &RelayHandler{
-		engine:        engine,
-		modelStore:    modelStore,
-		channelStore:  channelStore,
-		encryptionKey: encryptionKey,
+		engine:          engine,
+		modelStore:      modelStore,
+		channelStore:    channelStore,
+		userStore:       userStore,
+		pricingProvider: pricingProvider,
+		encryptionKey:   encryptionKey,
 	}
 }
 
@@ -99,19 +108,25 @@ func (h *RelayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
-	start := time.Now()
-
-	if req.Stream {
-		h.handleStream(c, &req, start)
+	preAuth, ok := h.ensurePreAuthorization(c, &req)
+	if !ok {
 		return
 	}
 
-	h.handleNonStream(c, &req, start)
+	start := time.Now()
+
+	if req.Stream {
+		h.handleStream(c, &req, start, preAuth)
+		return
+	}
+
+	h.handleNonStream(c, &req, start, preAuth)
 }
 
-func (h *RelayHandler) handleNonStream(c *gin.Context, req *adaptor.ChatRequest, start time.Time) {
+func (h *RelayHandler) handleNonStream(c *gin.Context, req *adaptor.ChatRequest, start time.Time, preAuth preAuthorizationResult) {
 	resp, channel, err := h.engine.ChatCompletion(c.Request.Context(), h.loadChannels(c.Request.Context()), req, 2)
 	if err != nil {
+		h.releasePreAuthorization(c, preAuth, "上游非流式调用失败，释放预授权 hold")
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
 				"message": "上游服务调用失败: " + err.Error(),
@@ -124,25 +139,28 @@ func (h *RelayHandler) handleNonStream(c *gin.Context, req *adaptor.ChatRequest,
 	latency := int(time.Since(start).Milliseconds())
 
 	h.engine.RecordUsage(relay.UsageRecord{
-		UserID:       c.GetInt64("user_id"),
-		APIKeyID:     c.GetInt64("api_key_id"),
-		ChannelID:    channel.ID,
-		Model:        req.Model,
-		Method:       "POST",
-		Path:         "/v1/chat/completions",
-		StatusCode:   200,
-		InputTokens:  resp.Usage.PromptTokens,
-		OutputTokens: resp.Usage.CompletionTokens,
-		LatencyMs:    latency,
-		IP:           c.ClientIP(),
+		UserID:         c.GetInt64("user_id"),
+		APIKeyID:       c.GetInt64("api_key_id"),
+		ChannelID:      channel.ID,
+		Model:          req.Model,
+		Method:         "POST",
+		Path:           "/v1/chat/completions",
+		StatusCode:     200,
+		InputTokens:    resp.Usage.PromptTokens,
+		OutputTokens:   resp.Usage.CompletionTokens,
+		ReservedAmount: preAuth.ReservedAmount,
+		WalletHoldID:   preAuth.WalletHoldID,
+		LatencyMs:      latency,
+		IP:             c.ClientIP(),
 	})
 
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *RelayHandler) handleStream(c *gin.Context, req *adaptor.ChatRequest, start time.Time) {
+func (h *RelayHandler) handleStream(c *gin.Context, req *adaptor.ChatRequest, start time.Time, preAuth preAuthorizationResult) {
 	stream, channel, err := h.engine.ChatCompletionStream(c.Request.Context(), h.loadChannels(c.Request.Context()), req, 2)
 	if err != nil {
+		h.releasePreAuthorization(c, preAuth, "上游流式调用建立失败，释放预授权 hold")
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": gin.H{
 				"message": "上游服务调用失败: " + err.Error(),
@@ -156,17 +174,20 @@ func (h *RelayHandler) handleStream(c *gin.Context, req *adaptor.ChatRequest, st
 	latency := int(time.Since(start).Milliseconds())
 
 	h.engine.RecordUsage(relay.UsageRecord{
-		UserID:       c.GetInt64("user_id"),
-		APIKeyID:     c.GetInt64("api_key_id"),
-		ChannelID:    channel.ID,
-		Model:        req.Model,
-		Method:       "POST",
-		Path:         "/v1/chat/completions",
-		StatusCode:   200,
-		InputTokens:  streamResult.InputTokens,
-		OutputTokens: streamResult.OutputTokens,
-		LatencyMs:    latency,
-		IP:           c.ClientIP(),
+		UserID:          c.GetInt64("user_id"),
+		APIKeyID:        c.GetInt64("api_key_id"),
+		ChannelID:       channel.ID,
+		Model:           req.Model,
+		Method:          "POST",
+		Path:            "/v1/chat/completions",
+		StatusCode:      200,
+		InputTokens:     streamResult.InputTokens,
+		OutputTokens:    streamResult.OutputTokens,
+		ReservedAmount:  preAuth.ReservedAmount,
+		WalletHoldID:    preAuth.WalletHoldID,
+		LatencyMs:       latency,
+		IP:              c.ClientIP(),
+		EstimatedTokens: streamResult.Estimated,
 	})
 }
 
@@ -232,6 +253,10 @@ func (h *RelayHandler) Completions(c *gin.Context) {
 		Model:    model,
 		Messages: []adaptor.Message{{Role: "user", Content: prompt}},
 	}
+	if rawMaxTokens, ok := body["max_tokens"].(float64); ok {
+		maxTokens := int(rawMaxTokens)
+		req.MaxTokens = &maxTokens
+	}
 
 	if !h.isRequestModelAllowed(c, req.Model) {
 		c.JSON(http.StatusForbidden, gin.H{
@@ -244,8 +269,14 @@ func (h *RelayHandler) Completions(c *gin.Context) {
 		return
 	}
 
+	preAuth, ok := h.ensurePreAuthorization(c, req)
+	if !ok {
+		return
+	}
+
 	resp, channel, err := h.engine.ChatCompletion(c.Request.Context(), h.loadChannels(c.Request.Context()), req, 2)
 	if err != nil {
+		h.releasePreAuthorization(c, preAuth, "上游 completions 调用失败，释放预授权 hold")
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": err.Error()}})
 		return
 	}
@@ -253,17 +284,19 @@ func (h *RelayHandler) Completions(c *gin.Context) {
 	latency := int(time.Since(start).Milliseconds())
 
 	h.engine.RecordUsage(relay.UsageRecord{
-		UserID:       c.GetInt64("user_id"),
-		APIKeyID:     c.GetInt64("api_key_id"),
-		ChannelID:    channel.ID,
-		Model:        req.Model,
-		Method:       "POST",
-		Path:         "/v1/completions",
-		StatusCode:   200,
-		InputTokens:  resp.Usage.PromptTokens,
-		OutputTokens: resp.Usage.CompletionTokens,
-		LatencyMs:    latency,
-		IP:           c.ClientIP(),
+		UserID:         c.GetInt64("user_id"),
+		APIKeyID:       c.GetInt64("api_key_id"),
+		ChannelID:      channel.ID,
+		Model:          req.Model,
+		Method:         "POST",
+		Path:           "/v1/completions",
+		StatusCode:     200,
+		InputTokens:    resp.Usage.PromptTokens,
+		OutputTokens:   resp.Usage.CompletionTokens,
+		ReservedAmount: preAuth.ReservedAmount,
+		WalletHoldID:   preAuth.WalletHoldID,
+		LatencyMs:      latency,
+		IP:             c.ClientIP(),
 	})
 
 	c.JSON(http.StatusOK, resp)
@@ -298,4 +331,86 @@ func modelAllowed(model string, allowed []string) bool {
 		}
 	}
 	return false
+}
+
+func (h *RelayHandler) ensurePreAuthorization(c *gin.Context, req *adaptor.ChatRequest) (preAuthorizationResult, bool) {
+	if h.userStore == nil || h.pricingProvider == nil {
+		return preAuthorizationResult{}, true
+	}
+
+	pricing, status, note := relay.ResolvePricing(c.Request.Context(), h.pricingProvider, req.Model)
+	if status == relay.BillingStatusUnpriced {
+		h.recordBillingEvent(c, model.BillingEventModelUnpriced, req.Model, 0, model.WalletHoldStatusFailed, note)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"message": "模型未配置价格，无法发起计费请求: " + req.Model,
+				"type":    "billing_error",
+				"code":    "model_unpriced",
+				"detail":  note,
+			},
+		})
+		return preAuthorizationResult{}, false
+	}
+
+	reservedAmount := relay.EstimatePreAuthorizationCost(pricing, req.MaxTokens, 1024)
+	if reservedAmount <= 0 {
+		return preAuthorizationResult{}, true
+	}
+
+	userID := c.GetInt64("user_id")
+	holdResult, err := h.userStore.CreateWalletHold(c.Request.Context(), userID, c.GetInt64("api_key_id"), req.Model, reservedAmount)
+	if err != nil {
+		h.recordBillingEvent(c, model.BillingEventPreAuthError, req.Model, reservedAmount, model.WalletHoldStatusFailed, err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": "余额预授权检查失败",
+				"type":    "server_error",
+			},
+		})
+		return preAuthorizationResult{}, false
+	}
+
+	decision := holdResult.Decision
+	if !decision.Allowed {
+		c.JSON(http.StatusPaymentRequired, gin.H{
+			"error": gin.H{
+				"message": "余额不足，低于本次请求预授权金额",
+				"type":    "insufficient_balance",
+				"code":    relay.BillingStatusPreAuthFailed,
+			},
+			"required_amount": decision.RequiredAmount,
+			"balance":         decision.Balance,
+			"reserved":        decision.Reserved,
+			"available":       decision.Available,
+		})
+		return preAuthorizationResult{}, false
+	}
+
+	return preAuthorizationResult{ReservedAmount: reservedAmount, WalletHoldID: holdResult.HoldID}, true
+}
+
+func (h *RelayHandler) releasePreAuthorization(c *gin.Context, preAuth preAuthorizationResult, note string) {
+	if h.userStore == nil || preAuth.WalletHoldID <= 0 {
+		return
+	}
+	if err := h.userStore.ReleaseWalletHold(c.Request.Context(), preAuth.WalletHoldID, note); err != nil {
+		log.Printf("释放预授权 hold #%d 失败: %v", preAuth.WalletHoldID, err)
+	}
+}
+
+func (h *RelayHandler) recordBillingEvent(c *gin.Context, eventType, modelID string, amount int64, status string, note string) {
+	if h.userStore == nil {
+		return
+	}
+	if err := h.userStore.CreateBillingEvent(c.Request.Context(), model.BillingEvent{
+		UserID:    c.GetInt64("user_id"),
+		APIKeyID:  c.GetInt64("api_key_id"),
+		EventType: eventType,
+		Model:     modelID,
+		Amount:    amount,
+		Status:    status,
+		Note:      note,
+	}); err != nil {
+		log.Printf("写入账务事件失败: %v", err)
+	}
 }

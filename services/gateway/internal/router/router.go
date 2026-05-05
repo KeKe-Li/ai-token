@@ -44,25 +44,29 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 	var logStore *model.LogStore
 	var channelStore *model.ChannelStore
 	var modelStore *model.ModelStore
+	var walletStore *model.WalletTransactionStore
 	if db != nil {
 		userStore = model.NewUserStore(db)
 		apiKeyStore = model.NewAPIKeyStore(db)
 		logStore = model.NewLogStore(db)
 		channelStore = model.NewChannelStore(db)
 		modelStore = model.NewModelStore(db)
+		walletStore = model.NewWalletTransactionStore(db)
 	}
 
 	// 初始化中转引擎
 	var logWriter relay.LogWriter
 	var cooldownStore relay.CooldownStore
+	var pricingProvider relay.PricingProvider
 	if db != nil {
-		logWriter = relay.NewDBLogWriter(db)
+		pricingProvider = relay.NewDBPricingProvider(db)
+		logWriter = relay.NewDBLogWriter(db, pricingProvider)
 	}
 	if rdb != nil {
 		cooldownStore = relay.NewRedisCooldownStore(rdb)
 	}
 	engine := relay.NewRelayEngine(logWriter, cooldownStore)
-	relayHandler := handler.NewRelayHandler(engine, modelStore, channelStore, cfg.EncryptionKey)
+	relayHandler := handler.NewRelayHandler(engine, modelStore, channelStore, userStore, pricingProvider, cfg.EncryptionKey)
 	relayHandler.SetChannels(loadChannelsFromEnv(cfg))
 
 	// OpenAI Compatible API（需要 API Key 认证）
@@ -107,8 +111,8 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 		// 用户接口（需要 JWT）
 		user := api.Group("/user")
 		user.Use(middleware.JWTAuth(cfg.JWTSecret))
-		if userStore != nil && apiKeyStore != nil && logStore != nil {
-			userHandler := handler.NewUserHandler(userStore, apiKeyStore, logStore)
+		if userStore != nil && apiKeyStore != nil && logStore != nil && walletStore != nil {
+			userHandler := handler.NewUserHandler(userStore, apiKeyStore, logStore, walletStore)
 			user.GET("/profile", userHandler.Profile)
 			user.GET("/dashboard", userHandler.Dashboard)
 			user.GET("/keys", userHandler.ListKeys)
@@ -116,14 +120,15 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 			user.DELETE("/keys/:id", userHandler.DeleteKey)
 			user.GET("/logs", userHandler.Logs)
 			user.GET("/usage", userHandler.Usage)
+			user.GET("/wallet/transactions", userHandler.WalletTransactions)
 		}
 
 		// 管理员接口
 		admin := api.Group("/admin")
 		admin.Use(middleware.JWTAuth(cfg.JWTSecret))
 		admin.Use(middleware.AdminOnly())
-		if channelStore != nil && modelStore != nil && userStore != nil && logStore != nil {
-			adminHandler := handler.NewAdminHandler(channelStore, modelStore, userStore, logStore, cfg.EncryptionKey)
+		if channelStore != nil && modelStore != nil && userStore != nil && logStore != nil && walletStore != nil {
+			adminHandler := handler.NewAdminHandler(channelStore, modelStore, userStore, logStore, walletStore, cfg.EncryptionKey)
 			admin.GET("/channels", adminHandler.ListChannels)
 			admin.POST("/channels", adminHandler.CreateChannel)
 			admin.POST("/channels/:id/test", adminHandler.TestChannel)
@@ -136,6 +141,7 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.PUT("/users/:id", adminHandler.UpdateUser)
 			admin.GET("/logs", adminHandler.GlobalLogs)
+			admin.GET("/wallet/transactions", adminHandler.WalletTransactions)
 			admin.GET("/stats", adminHandler.Stats)
 		}
 	}

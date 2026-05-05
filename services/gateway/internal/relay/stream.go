@@ -14,6 +14,7 @@ import (
 type StreamResult struct {
 	InputTokens  int
 	OutputTokens int
+	Estimated    bool
 }
 
 func WriteStreamResponse(c *gin.Context, stream <-chan adaptor.StreamChunk) StreamResult {
@@ -60,6 +61,7 @@ func WriteStreamResponse(c *gin.Context, stream <-chan adaptor.StreamChunk) Stre
 
 	if result.OutputTokens == 0 {
 		result.OutputTokens = estimateTokens(outputChunks)
+		result.Estimated = true
 	}
 
 	return result
