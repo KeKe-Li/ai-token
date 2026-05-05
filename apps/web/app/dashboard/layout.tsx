@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: "/dashboard/keys", label: "API Keys" },
   { href: "/dashboard/logs", label: "调用日志" },
   { href: "/dashboard/usage", label: "用量统计" },
+  { href: "/dashboard/wallet", label: "钱包流水" },
   { href: "/dashboard/topup", label: "充值" },
   { href: "/dashboard/settings", label: "账户设置" },
 ];

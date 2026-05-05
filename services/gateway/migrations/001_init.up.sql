@@ -10,6 +10,7 @@ CREATE TABLE users (
     role          SMALLINT NOT NULL DEFAULT 1,
     status        SMALLINT NOT NULL DEFAULT 1,
     balance       BIGINT NOT NULL DEFAULT 0,
+    reserved_balance BIGINT NOT NULL DEFAULT 0,
     used_amount   BIGINT NOT NULL DEFAULT 0,
     request_count BIGINT NOT NULL DEFAULT 0,
     group_name    VARCHAR(64) NOT NULL DEFAULT 'default',
@@ -20,6 +21,7 @@ CREATE TABLE users (
 COMMENT ON COLUMN users.role IS '1:普通用户 10:管理员';
 COMMENT ON COLUMN users.status IS '1:正常 2:禁用';
 COMMENT ON COLUMN users.balance IS '余额,单位:0.001元';
+COMMENT ON COLUMN users.reserved_balance IS '已预授权但尚未结算的冻结余额,单位:0.001元';
 
 -- API 密钥表
 CREATE TABLE api_keys (
@@ -103,6 +105,7 @@ CREATE TABLE request_logs (
     user_id         BIGINT NOT NULL,
     api_key_id      BIGINT NOT NULL,
     channel_id      BIGINT,
+    wallet_hold_id  BIGINT,
     model           VARCHAR(128) NOT NULL,
     request_method  VARCHAR(16) NOT NULL,
     request_path    VARCHAR(256) NOT NULL,
@@ -110,9 +113,13 @@ CREATE TABLE request_logs (
     input_tokens    INT NOT NULL DEFAULT 0,
     output_tokens   INT NOT NULL DEFAULT 0,
     cost            BIGINT NOT NULL DEFAULT 0,
+    reserved_amount BIGINT NOT NULL DEFAULT 0,
     latency_ms      INT NOT NULL DEFAULT 0,
     error_message   TEXT,
     ip_address      VARCHAR(45),
+    billing_status  VARCHAR(32) NOT NULL DEFAULT 'pending',
+    billing_note    TEXT,
+    estimated_tokens BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -121,7 +128,86 @@ CREATE INDEX idx_request_logs_created ON request_logs(created_at DESC);
 CREATE INDEX idx_request_logs_model ON request_logs(model);
 
 COMMENT ON COLUMN request_logs.cost IS '本次费用,单位:0.001元';
+COMMENT ON COLUMN request_logs.wallet_hold_id IS '关联的钱包预授权 hold ID';
+COMMENT ON COLUMN request_logs.reserved_amount IS '请求前预授权估算金额,单位:0.001元';
 COMMENT ON COLUMN request_logs.latency_ms IS '响应延迟,毫秒';
+COMMENT ON COLUMN request_logs.billing_status IS '计费状态: charged/charge_failed/unpriced/zero_cost/no_user';
+COMMENT ON COLUMN request_logs.billing_note IS '计费说明或失败原因';
+COMMENT ON COLUMN request_logs.estimated_tokens IS '是否使用估算 token 计费';
+
+-- 钱包预授权 hold 表
+CREATE TABLE wallet_holds (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    api_key_id      BIGINT,
+    request_log_id  BIGINT REFERENCES request_logs(id) ON DELETE SET NULL,
+    model           VARCHAR(128),
+    amount          BIGINT NOT NULL,
+    captured_amount BIGINT NOT NULL DEFAULT 0,
+    released_amount BIGINT NOT NULL DEFAULT 0,
+    status          VARCHAR(32) NOT NULL,
+    reason          VARCHAR(64) NOT NULL DEFAULT 'api_request',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at      TIMESTAMPTZ
+);
+
+CREATE INDEX idx_wallet_holds_user_time ON wallet_holds(user_id, created_at DESC);
+CREATE INDEX idx_wallet_holds_status ON wallet_holds(status);
+CREATE INDEX idx_wallet_holds_request_log ON wallet_holds(request_log_id);
+
+COMMENT ON TABLE wallet_holds IS '钱包预授权 hold,用于请求前冻结可用余额并在结算时 capture/release';
+COMMENT ON COLUMN wallet_holds.amount IS '预授权金额,单位:0.001元';
+COMMENT ON COLUMN wallet_holds.status IS 'held/captured/released/failed';
+
+-- 账务事件表
+CREATE TABLE billing_events (
+    id                BIGSERIAL PRIMARY KEY,
+    user_id           BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    api_key_id        BIGINT,
+    request_log_id    BIGINT REFERENCES request_logs(id) ON DELETE SET NULL,
+    wallet_hold_id    BIGINT REFERENCES wallet_holds(id) ON DELETE SET NULL,
+    event_type        VARCHAR(64) NOT NULL,
+    model             VARCHAR(128),
+    amount            BIGINT NOT NULL DEFAULT 0,
+    balance           BIGINT NOT NULL DEFAULT 0,
+    reserved_balance  BIGINT NOT NULL DEFAULT 0,
+    available_balance BIGINT NOT NULL DEFAULT 0,
+    status            VARCHAR(32) NOT NULL,
+    note              TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_billing_events_user_time ON billing_events(user_id, created_at DESC);
+CREATE INDEX idx_billing_events_type ON billing_events(event_type);
+CREATE INDEX idx_billing_events_hold ON billing_events(wallet_hold_id);
+
+COMMENT ON TABLE billing_events IS '不可变账务事件,记录预授权、capture、release、失败等非余额流水事件';
+
+-- 钱包流水表
+CREATE TABLE wallet_transactions (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    request_log_id  BIGINT REFERENCES request_logs(id) ON DELETE SET NULL,
+    type            VARCHAR(32) NOT NULL,
+    amount          BIGINT NOT NULL,
+    balance_before  BIGINT,
+    balance_after   BIGINT,
+    reference_type  VARCHAR(32),
+    reference_id    VARCHAR(128),
+    note            TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_wallet_transactions_user_time ON wallet_transactions(user_id, created_at DESC);
+CREATE INDEX idx_wallet_transactions_type ON wallet_transactions(type);
+CREATE INDEX idx_wallet_transactions_request_log ON wallet_transactions(request_log_id);
+
+COMMENT ON TABLE wallet_transactions IS '钱包余额变动流水';
+COMMENT ON COLUMN wallet_transactions.type IS '流水类型: api_charge/api_charge_failed/admin_adjustment/recharge';
+COMMENT ON COLUMN wallet_transactions.amount IS '变动金额,单位:0.001元; 消费为负数';
+COMMENT ON COLUMN wallet_transactions.balance_before IS '变动前余额快照,单位:0.001元';
+COMMENT ON COLUMN wallet_transactions.balance_after IS '变动后余额快照,单位:0.001元';
 
 -- 插入默认管理员账户 (密码: admin123, bcrypt哈希)
 -- 默认管理员 密码: Admin@2026!

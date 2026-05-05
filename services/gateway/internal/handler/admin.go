@@ -18,15 +18,17 @@ type AdminHandler struct {
 	modelStore    *model.ModelStore
 	userStore     *model.UserStore
 	logStore      *model.LogStore
+	walletStore   *model.WalletTransactionStore
 	encryptionKey string
 }
 
-func NewAdminHandler(channelStore *model.ChannelStore, modelStore *model.ModelStore, userStore *model.UserStore, logStore *model.LogStore, encryptionKey string) *AdminHandler {
+func NewAdminHandler(channelStore *model.ChannelStore, modelStore *model.ModelStore, userStore *model.UserStore, logStore *model.LogStore, walletStore *model.WalletTransactionStore, encryptionKey string) *AdminHandler {
 	return &AdminHandler{
 		channelStore:  channelStore,
 		modelStore:    modelStore,
 		userStore:     userStore,
 		logStore:      logStore,
+		walletStore:   walletStore,
 		encryptionKey: encryptionKey,
 	}
 }
@@ -350,6 +352,30 @@ func (h *AdminHandler) GlobalLogs(c *gin.Context) {
 		logs = []model.RequestLog{}
 	}
 	c.JSON(http.StatusOK, gin.H{"data": logs})
+}
+
+func (h *AdminHandler) WalletTransactions(c *gin.Context) {
+	limit, offset := parseListPagination(c)
+
+	var userID *int64
+	if rawUserID := c.Query("user_id"); rawUserID != "" {
+		parsed, err := strconv.ParseInt(rawUserID, 10, 64)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 user_id"})
+			return
+		}
+		userID = &parsed
+	}
+
+	transactions, err := h.walletStore.ListAll(c.Request.Context(), userID, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取钱包流水失败"})
+		return
+	}
+	if transactions == nil {
+		transactions = []model.WalletTransaction{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": transactions})
 }
 
 func (h *AdminHandler) Stats(c *gin.Context) {

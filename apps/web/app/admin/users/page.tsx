@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
-type User = { id: number; username: string; email: string; role: number; status: number; balance: number; used_amount: number; request_count: number; created_at: string };
+type User = { id: number; username: string; email: string; role: number; status: number; balance: number; reserved_balance?: number; used_amount: number; request_count: number; created_at: string };
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -32,6 +32,7 @@ export default function AdminUsersPage() {
                 <th className="px-4 py-3 text-left font-medium">邮箱</th>
                 <th className="px-4 py-3 text-left font-medium">角色</th>
                 <th className="px-4 py-3 text-right font-medium">余额</th>
+                <th className="px-4 py-3 text-right font-medium">冻结</th>
                 <th className="px-4 py-3 text-right font-medium">消费</th>
                 <th className="px-4 py-3 text-right font-medium">请求数</th>
                 <th className="px-4 py-3 text-center font-medium">状态</th>
@@ -48,6 +49,7 @@ export default function AdminUsersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">¥{(u.balance / 1000).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right text-yellow-400">¥{((u.reserved_balance ?? 0) / 1000).toFixed(2)}</td>
                   <td className="px-4 py-3 text-right text-muted-foreground">¥{(u.used_amount / 1000).toFixed(2)}</td>
                   <td className="px-4 py-3 text-right text-muted-foreground">{u.request_count}</td>
                   <td className="px-4 py-3 text-center">

@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: "/admin/models", label: "模型管理" },
   { href: "/admin/users", label: "用户管理" },
   { href: "/admin/logs", label: "全局日志" },
+  { href: "/admin/wallet", label: "钱包流水" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

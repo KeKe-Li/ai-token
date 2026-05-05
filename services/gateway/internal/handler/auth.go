@@ -96,6 +96,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			"email":    user.Email,
 			"role":     user.Role,
 			"balance":  user.Balance,
+			"reserved": user.Reserved,
 		},
 	})
 }

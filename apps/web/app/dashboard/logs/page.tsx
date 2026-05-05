@@ -10,7 +10,11 @@ type LogEntry = {
   input_tokens: number;
   output_tokens: number;
   cost: number;
+  reserved_amount?: number;
   latency_ms: number;
+  billing_status: string;
+  billing_note?: string;
+  estimated_tokens: boolean;
   created_at: string;
 };
 
@@ -51,7 +55,9 @@ export default function LogsPage() {
                   <th className="px-3 py-3 text-right font-medium">输入</th>
                   <th className="px-3 py-3 text-right font-medium">输出</th>
                   <th className="px-3 py-3 text-right font-medium">费用</th>
+                  <th className="px-3 py-3 text-right font-medium">预授权</th>
                   <th className="px-3 py-3 text-right font-medium">延迟</th>
+                  <th className="px-3 py-3 text-center font-medium">计费</th>
                   <th className="px-3 py-3 text-center font-medium">状态</th>
                 </tr>
               </thead>
@@ -63,7 +69,11 @@ export default function LogsPage() {
                     <td className="px-3 py-3 text-right text-muted-foreground">{log.input_tokens.toLocaleString()}</td>
                     <td className="px-3 py-3 text-right text-muted-foreground">{log.output_tokens.toLocaleString()}</td>
                     <td className="px-3 py-3 text-right">¥{(log.cost / 1000).toFixed(4)}</td>
+                    <td className="px-3 py-3 text-right text-muted-foreground">¥{((log.reserved_amount ?? 0) / 1000).toFixed(4)}</td>
                     <td className="px-3 py-3 text-right text-muted-foreground">{log.latency_ms}ms</td>
+                    <td className="px-3 py-3 text-center">
+                      <BillingBadge status={log.billing_status} estimated={log.estimated_tokens} note={log.billing_note} />
+                    </td>
                     <td className="px-3 py-3 text-center">
                       <span className={`rounded-full px-2 py-0.5 text-xs ${log.status_code === 200 ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"}`}>{log.status_code}</span>
                     </td>
@@ -75,5 +85,23 @@ export default function LogsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function BillingBadge({ status, estimated, note }: { status?: string; estimated?: boolean; note?: string }) {
+  const normalized = status || "unknown";
+  const ok = normalized === "charged" || normalized === "zero_cost";
+  const warn = normalized === "unpriced" || normalized === "charge_failed";
+  return (
+    <span
+      title={note || normalized}
+      className={`rounded-full px-2 py-0.5 text-xs ${
+        ok ? "text-emerald-400 bg-emerald-500/10" :
+        warn ? "text-yellow-400 bg-yellow-500/10" :
+        "text-muted-foreground bg-muted"
+      }`}
+    >
+      {normalized}{estimated ? " · 估" : ""}
+    </span>
   );
 }

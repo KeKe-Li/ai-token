@@ -14,13 +14,15 @@ type UserHandler struct {
 	userStore   *model.UserStore
 	apiKeyStore *model.APIKeyStore
 	logStore    *model.LogStore
+	walletStore *model.WalletTransactionStore
 }
 
-func NewUserHandler(userStore *model.UserStore, apiKeyStore *model.APIKeyStore, logStore *model.LogStore) *UserHandler {
+func NewUserHandler(userStore *model.UserStore, apiKeyStore *model.APIKeyStore, logStore *model.LogStore, walletStore *model.WalletTransactionStore) *UserHandler {
 	return &UserHandler{
 		userStore:   userStore,
 		apiKeyStore: apiKeyStore,
 		logStore:    logStore,
+		walletStore: walletStore,
 	}
 }
 
@@ -38,6 +40,7 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		"email":         user.Email,
 		"role":          user.Role,
 		"balance":       user.Balance,
+		"reserved":      user.Reserved,
 		"used_amount":   user.UsedAmount,
 		"request_count": user.RequestCount,
 		"group_name":    user.GroupName,
@@ -58,6 +61,7 @@ func (h *UserHandler) Dashboard(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"balance":       user.Balance,
+		"reserved":      user.Reserved,
 		"used_amount":   user.UsedAmount,
 		"request_count": user.RequestCount,
 		"usage":         usage,
@@ -157,4 +161,35 @@ func (h *UserHandler) Usage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": usage})
+}
+
+func (h *UserHandler) WalletTransactions(c *gin.Context) {
+	userID := c.GetInt64("user_id")
+	limit, offset := parseListPagination(c)
+
+	transactions, err := h.walletStore.ListByUser(c.Request.Context(), userID, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取钱包流水失败"})
+		return
+	}
+	if transactions == nil {
+		transactions = []model.WalletTransaction{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": transactions})
+}
+
+func parseListPagination(c *gin.Context) (int, int) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
 }
