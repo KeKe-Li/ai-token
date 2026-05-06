@@ -3,9 +3,12 @@ package model
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -134,6 +137,284 @@ func PlanHoldCapture(holdAmount, actualCost, balance int64) HoldCapturePlan {
 		plan.Note = "余额不足以 capture 实际成本"
 	}
 	return plan
+}
+
+func BuildExpiredHoldReleaseEvent(hold WalletHold, balance, reservedBalance int64) BillingEvent {
+	holdID := hold.ID
+	reservedAfter := maxInt64(reservedBalance-hold.Amount, 0)
+	return BillingEvent{
+		UserID:       hold.UserID,
+		APIKeyID:     hold.APIKeyID,
+		WalletHoldID: &holdID,
+		EventType:    BillingEventHoldReleased,
+		Model:        hold.Model,
+		Amount:       hold.Amount,
+		Balance:      balance,
+		Reserved:     reservedAfter,
+		Available:    balance - reservedAfter,
+		Status:       WalletHoldStatusReleased,
+		Note:         "过期预授权 hold 自动释放",
+	}
+}
+
+func NormalizeWalletHoldStatusFilter(raw string) (string, bool) {
+	status := strings.TrimSpace(raw)
+	if status == "" {
+		return "", true
+	}
+	switch status {
+	case WalletHoldStatusHeld, WalletHoldStatusCaptured, WalletHoldStatusReleased, WalletHoldStatusFailed:
+		return status, true
+	default:
+		return "", false
+	}
+}
+
+func BuildManualHoldReleaseNote(reason string) string {
+	trimmed := strings.TrimSpace(reason)
+	if trimmed == "" {
+		return "管理员手动释放异常 hold"
+	}
+	return "管理员手动释放异常 hold: " + trimmed
+}
+
+type WalletHoldStore struct {
+	db *pgxpool.Pool
+}
+
+func NewWalletHoldStore(db *pgxpool.Pool) *WalletHoldStore {
+	return &WalletHoldStore{db: db}
+}
+
+func (s *WalletHoldStore) ListAll(ctx context.Context, userID *int64, status string, limit, offset int) ([]WalletHold, error) {
+	if userID != nil {
+		return s.ListByUser(ctx, *userID, status, limit, offset)
+	}
+	if status != "" {
+		rows, err := s.db.Query(ctx,
+			`SELECT id, user_id, api_key_id, request_log_id, model, amount, captured_amount, released_amount, status, reason, created_at, updated_at, expires_at
+			 FROM wallet_holds
+			 WHERE status = $1
+			 ORDER BY created_at DESC, id DESC
+			 LIMIT $2 OFFSET $3`,
+			status, limit, offset,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list wallet holds: %w", err)
+		}
+		defer rows.Close()
+		return scanWalletHolds(rows)
+	}
+
+	rows, err := s.db.Query(ctx,
+		`SELECT id, user_id, api_key_id, request_log_id, model, amount, captured_amount, released_amount, status, reason, created_at, updated_at, expires_at
+		 FROM wallet_holds
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $1 OFFSET $2`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list wallet holds: %w", err)
+	}
+	defer rows.Close()
+	return scanWalletHolds(rows)
+}
+
+func (s *WalletHoldStore) ListByUser(ctx context.Context, userID int64, status string, limit, offset int) ([]WalletHold, error) {
+	if status != "" {
+		rows, err := s.db.Query(ctx,
+			`SELECT id, user_id, api_key_id, request_log_id, model, amount, captured_amount, released_amount, status, reason, created_at, updated_at, expires_at
+			 FROM wallet_holds
+			 WHERE user_id = $1 AND status = $2
+			 ORDER BY created_at DESC, id DESC
+			 LIMIT $3 OFFSET $4`,
+			userID, status, limit, offset,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list user wallet holds: %w", err)
+		}
+		defer rows.Close()
+		return scanWalletHolds(rows)
+	}
+
+	rows, err := s.db.Query(ctx,
+		`SELECT id, user_id, api_key_id, request_log_id, model, amount, captured_amount, released_amount, status, reason, created_at, updated_at, expires_at
+		 FROM wallet_holds
+		 WHERE user_id = $1
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $2 OFFSET $3`,
+		userID, limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list user wallet holds: %w", err)
+	}
+	defer rows.Close()
+	return scanWalletHolds(rows)
+}
+
+type walletHoldRows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}
+
+func scanWalletHolds(rows walletHoldRows) ([]WalletHold, error) {
+	var holds []WalletHold
+	for rows.Next() {
+		var hold WalletHold
+		var requestLogID pgtype.Int8
+		var modelValue pgtype.Text
+		var expiresAt pgtype.Timestamptz
+		if err := rows.Scan(
+			&hold.ID,
+			&hold.UserID,
+			&hold.APIKeyID,
+			&requestLogID,
+			&modelValue,
+			&hold.Amount,
+			&hold.CapturedAmount,
+			&hold.ReleasedAmount,
+			&hold.Status,
+			&hold.Reason,
+			&hold.CreatedAt,
+			&hold.UpdatedAt,
+			&expiresAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan wallet hold: %w", err)
+		}
+		if requestLogID.Valid {
+			value := requestLogID.Int64
+			hold.RequestLogID = &value
+		}
+		if modelValue.Valid {
+			hold.Model = modelValue.String
+		}
+		if expiresAt.Valid {
+			value := expiresAt.Time
+			hold.ExpiresAt = &value
+		}
+		holds = append(holds, hold)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate wallet holds: %w", err)
+	}
+	return holds, nil
+}
+
+type BillingEventStore struct {
+	db *pgxpool.Pool
+}
+
+func NewBillingEventStore(db *pgxpool.Pool) *BillingEventStore {
+	return &BillingEventStore{db: db}
+}
+
+func (s *BillingEventStore) ListAll(ctx context.Context, userID *int64, limit, offset int) ([]BillingEvent, error) {
+	if userID != nil {
+		return s.ListByUser(ctx, *userID, limit, offset)
+	}
+
+	rows, err := s.db.Query(ctx,
+		`SELECT id, user_id, api_key_id, request_log_id, wallet_hold_id, event_type, model, amount, balance, reserved_balance, available_balance, status, note, created_at
+		 FROM billing_events
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $1 OFFSET $2`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list billing events: %w", err)
+	}
+	defer rows.Close()
+
+	return scanBillingEvents(rows)
+}
+
+func (s *BillingEventStore) ListByUser(ctx context.Context, userID int64, limit, offset int) ([]BillingEvent, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT id, user_id, api_key_id, request_log_id, wallet_hold_id, event_type, model, amount, balance, reserved_balance, available_balance, status, note, created_at
+		 FROM billing_events
+		 WHERE user_id = $1
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $2 OFFSET $3`,
+		userID, limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list user billing events: %w", err)
+	}
+	defer rows.Close()
+
+	return scanBillingEvents(rows)
+}
+
+func (s *BillingEventStore) ListByWalletHold(ctx context.Context, walletHoldID int64, limit, offset int) ([]BillingEvent, error) {
+	rows, err := s.db.Query(ctx,
+		`SELECT id, user_id, api_key_id, request_log_id, wallet_hold_id, event_type, model, amount, balance, reserved_balance, available_balance, status, note, created_at
+		 FROM billing_events
+		 WHERE wallet_hold_id = $1
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $2 OFFSET $3`,
+		walletHoldID, limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list wallet hold billing events: %w", err)
+	}
+	defer rows.Close()
+
+	return scanBillingEvents(rows)
+}
+
+type billingEventRows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}
+
+func scanBillingEvents(rows billingEventRows) ([]BillingEvent, error) {
+	var events []BillingEvent
+	for rows.Next() {
+		var event BillingEvent
+		var requestLogID pgtype.Int8
+		var walletHoldID pgtype.Int8
+		var modelValue pgtype.Text
+		var note pgtype.Text
+		if err := rows.Scan(
+			&event.ID,
+			&event.UserID,
+			&event.APIKeyID,
+			&requestLogID,
+			&walletHoldID,
+			&event.EventType,
+			&modelValue,
+			&event.Amount,
+			&event.Balance,
+			&event.Reserved,
+			&event.Available,
+			&event.Status,
+			&note,
+			&event.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan billing event: %w", err)
+		}
+		if requestLogID.Valid {
+			value := requestLogID.Int64
+			event.RequestLogID = &value
+		}
+		if walletHoldID.Valid {
+			value := walletHoldID.Int64
+			event.WalletHoldID = &value
+		}
+		if modelValue.Valid {
+			event.Model = modelValue.String
+		}
+		if note.Valid {
+			event.Note = note.String
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate billing events: %w", err)
+	}
+	return events, nil
 }
 
 func insertBillingEvent(ctx context.Context, tx pgx.Tx, event BillingEvent) (int64, error) {

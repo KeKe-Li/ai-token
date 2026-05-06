@@ -268,6 +268,46 @@ func (s *UserStore) ReleaseWalletHold(ctx context.Context, holdID int64, note st
 	return nil
 }
 
+func (s *UserStore) ReleaseExpiredWalletHolds(ctx context.Context, limit int) (int, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	rows, err := s.db.Query(ctx,
+		`SELECT id
+		 FROM wallet_holds
+		 WHERE status = $1 AND expires_at IS NOT NULL AND expires_at < NOW()
+		 ORDER BY expires_at ASC, id ASC
+		 LIMIT $2`,
+		WalletHoldStatusHeld, limit,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list expired wallet holds: %w", err)
+	}
+	defer rows.Close()
+
+	var holdIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return 0, fmt.Errorf("failed to scan expired wallet hold: %w", err)
+		}
+		holdIDs = append(holdIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("failed to iterate expired wallet holds: %w", err)
+	}
+
+	released := 0
+	for _, holdID := range holdIDs {
+		if err := s.ReleaseWalletHold(ctx, holdID, "过期预授权 hold 自动释放"); err != nil {
+			return released, err
+		}
+		released++
+	}
+	return released, nil
+}
+
 func (s *UserStore) CreateBillingEvent(ctx context.Context, event BillingEvent) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
