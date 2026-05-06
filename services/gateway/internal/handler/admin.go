@@ -19,16 +19,20 @@ type AdminHandler struct {
 	userStore     *model.UserStore
 	logStore      *model.LogStore
 	walletStore   *model.WalletTransactionStore
+	holdStore     *model.WalletHoldStore
+	eventStore    *model.BillingEventStore
 	encryptionKey string
 }
 
-func NewAdminHandler(channelStore *model.ChannelStore, modelStore *model.ModelStore, userStore *model.UserStore, logStore *model.LogStore, walletStore *model.WalletTransactionStore, encryptionKey string) *AdminHandler {
+func NewAdminHandler(channelStore *model.ChannelStore, modelStore *model.ModelStore, userStore *model.UserStore, logStore *model.LogStore, walletStore *model.WalletTransactionStore, holdStore *model.WalletHoldStore, eventStore *model.BillingEventStore, encryptionKey string) *AdminHandler {
 	return &AdminHandler{
 		channelStore:  channelStore,
 		modelStore:    modelStore,
 		userStore:     userStore,
 		logStore:      logStore,
 		walletStore:   walletStore,
+		holdStore:     holdStore,
+		eventStore:    eventStore,
 		encryptionKey: encryptionKey,
 	}
 }
@@ -376,6 +380,102 @@ func (h *AdminHandler) WalletTransactions(c *gin.Context) {
 		transactions = []model.WalletTransaction{}
 	}
 	c.JSON(http.StatusOK, gin.H{"data": transactions})
+}
+
+func (h *AdminHandler) BillingEvents(c *gin.Context) {
+	limit, offset := parseListPagination(c)
+
+	if rawHoldID := c.Query("wallet_hold_id"); rawHoldID != "" {
+		holdID, err := strconv.ParseInt(rawHoldID, 10, 64)
+		if err != nil || holdID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 wallet_hold_id"})
+			return
+		}
+		events, err := h.eventStore.ListByWalletHold(c.Request.Context(), holdID, limit, offset)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取账务事件失败"})
+			return
+		}
+		if events == nil {
+			events = []model.BillingEvent{}
+		}
+		c.JSON(http.StatusOK, gin.H{"data": events})
+		return
+	}
+
+	var userID *int64
+	if rawUserID := c.Query("user_id"); rawUserID != "" {
+		parsed, err := strconv.ParseInt(rawUserID, 10, 64)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 user_id"})
+			return
+		}
+		userID = &parsed
+	}
+
+	events, err := h.eventStore.ListAll(c.Request.Context(), userID, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取账务事件失败"})
+		return
+	}
+	if events == nil {
+		events = []model.BillingEvent{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": events})
+}
+
+func (h *AdminHandler) WalletHolds(c *gin.Context) {
+	limit, offset := parseListPagination(c)
+
+	var userID *int64
+	if rawUserID := c.Query("user_id"); rawUserID != "" {
+		parsed, err := strconv.ParseInt(rawUserID, 10, 64)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 user_id"})
+			return
+		}
+		userID = &parsed
+	}
+
+	status, ok := model.NormalizeWalletHoldStatusFilter(c.Query("status"))
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 hold 状态"})
+		return
+	}
+
+	holds, err := h.holdStore.ListAll(c.Request.Context(), userID, status, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取预授权 hold 失败"})
+		return
+	}
+	if holds == nil {
+		holds = []model.WalletHold{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": holds})
+}
+
+func (h *AdminHandler) ReleaseWalletHold(c *gin.Context) {
+	holdID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || holdID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 hold ID"})
+		return
+	}
+
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+
+	note := model.BuildManualHoldReleaseNote(req.Reason)
+	if err := h.userStore.ReleaseWalletHold(c.Request.Context(), holdID, note); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "释放预授权 hold 失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "预授权 hold 已释放", "note": note})
 }
 
 func (h *AdminHandler) Stats(c *gin.Context) {

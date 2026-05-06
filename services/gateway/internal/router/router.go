@@ -1,7 +1,10 @@
 package router
 
 import (
+	"context"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -45,6 +48,8 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 	var channelStore *model.ChannelStore
 	var modelStore *model.ModelStore
 	var walletStore *model.WalletTransactionStore
+	var walletHoldStore *model.WalletHoldStore
+	var billingEventStore *model.BillingEventStore
 	if db != nil {
 		userStore = model.NewUserStore(db)
 		apiKeyStore = model.NewAPIKeyStore(db)
@@ -52,6 +57,9 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 		channelStore = model.NewChannelStore(db)
 		modelStore = model.NewModelStore(db)
 		walletStore = model.NewWalletTransactionStore(db)
+		walletHoldStore = model.NewWalletHoldStore(db)
+		billingEventStore = model.NewBillingEventStore(db)
+		startExpiredHoldReleaser(userStore)
 	}
 
 	// 初始化中转引擎
@@ -127,8 +135,8 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 		admin := api.Group("/admin")
 		admin.Use(middleware.JWTAuth(cfg.JWTSecret))
 		admin.Use(middleware.AdminOnly())
-		if channelStore != nil && modelStore != nil && userStore != nil && logStore != nil && walletStore != nil {
-			adminHandler := handler.NewAdminHandler(channelStore, modelStore, userStore, logStore, walletStore, cfg.EncryptionKey)
+		if channelStore != nil && modelStore != nil && userStore != nil && logStore != nil && walletStore != nil && walletHoldStore != nil && billingEventStore != nil {
+			adminHandler := handler.NewAdminHandler(channelStore, modelStore, userStore, logStore, walletStore, walletHoldStore, billingEventStore, cfg.EncryptionKey)
 			admin.GET("/channels", adminHandler.ListChannels)
 			admin.POST("/channels", adminHandler.CreateChannel)
 			admin.POST("/channels/:id/test", adminHandler.TestChannel)
@@ -142,11 +150,32 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 			admin.PUT("/users/:id", adminHandler.UpdateUser)
 			admin.GET("/logs", adminHandler.GlobalLogs)
 			admin.GET("/wallet/transactions", adminHandler.WalletTransactions)
+			admin.GET("/wallet/holds", adminHandler.WalletHolds)
+			admin.POST("/wallet/holds/:id/release", adminHandler.ReleaseWalletHold)
+			admin.GET("/billing-events", adminHandler.BillingEvents)
 			admin.GET("/stats", adminHandler.Stats)
 		}
 	}
 
 	return r
+}
+
+func startExpiredHoldReleaser(userStore *model.UserStore) {
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			released, err := userStore.ReleaseExpiredWalletHolds(context.Background(), 100)
+			if err != nil {
+				log.Printf("释放过期钱包 hold 失败: %v", err)
+				continue
+			}
+			if released > 0 {
+				log.Printf("已释放过期钱包 hold: %d", released)
+			}
+		}
+	}()
 }
 
 func loadChannelsFromEnv(cfg *config.Config) []relay.Channel {

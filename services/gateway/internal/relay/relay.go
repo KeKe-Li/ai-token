@@ -157,7 +157,12 @@ func (e *RelayEngine) RecordUsage(record UsageRecord) {
 	select {
 	case e.usageCh <- record:
 	default:
-		log.Printf("用量记录通道已满，丢弃记录")
+		log.Printf("用量记录通道已满，切换同步写入")
+		if e.logWriter != nil {
+			if err := e.logWriter.WriteLog(context.Background(), &record); err != nil {
+				log.Printf("同步写入用量记录失败: %v", err)
+			}
+		}
 	}
 }
 

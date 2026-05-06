@@ -10,6 +10,8 @@ const NAV_ITEMS = [
   { href: "/admin/users", label: "用户管理" },
   { href: "/admin/logs", label: "全局日志" },
   { href: "/admin/wallet", label: "钱包流水" },
+  { href: "/admin/wallet-holds", label: "预授权 Hold" },
+  { href: "/admin/billing-events", label: "账务事件" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
