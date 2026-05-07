@@ -24,6 +24,7 @@ export default function AdminBillingEventsPage() {
   const [events, setEvents] = useState<BillingEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [userID, setUserID] = useState("");
+  const [walletHoldID, setWalletHoldID] = useState<string | null>(null);
 
   const load = () => {
     const token = localStorage.getItem("token");
@@ -33,7 +34,10 @@ export default function AdminBillingEventsPage() {
     if (userID.trim()) params.set("user_id", userID.trim());
     if (typeof window !== "undefined") {
       const holdID = new URLSearchParams(window.location.search).get("wallet_hold_id");
-      if (holdID) params.set("wallet_hold_id", holdID);
+      if (holdID) {
+        params.set("wallet_hold_id", holdID);
+        setWalletHoldID(holdID);
+      }
     }
     api.get<{ data: BillingEvent[] }>(`/api/admin/billing-events?${params.toString()}`, token)
       .then((res) => setEvents(res.data || []))
@@ -79,6 +83,14 @@ export default function AdminBillingEventsPage() {
         </div>
       </div>
 
+      {walletHoldID && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
+          <span className="text-muted-foreground">当前过滤：</span>
+          <span className="font-mono text-primary">Hold #{walletHoldID}</span>
+          <a className="text-primary hover:underline" href="/admin/billing-events">清除过滤</a>
+        </div>
+      )}
+
       <div className="mt-6 grid gap-4 md:grid-cols-4">
         <MetricCard label="预授权" value={`${summary.held}`} />
         <MetricCard label="Capture" value={`${summary.captured}`} tone="green" />
@@ -123,7 +135,13 @@ export default function AdminBillingEventsPage() {
                   <td className="px-3 py-3 text-right text-yellow-400">{formatMoney(event.reserved_balance)}</td>
                   <td className="px-3 py-3 text-right text-emerald-400">{formatMoney(event.available_balance)}</td>
                   <td className="px-3 py-3 text-xs text-muted-foreground">
-                    {event.request_log_id ? `请求 #${event.request_log_id}` : event.wallet_hold_id ? `Hold #${event.wallet_hold_id}` : "-"}
+                    {event.request_log_id ? (
+                      <a className="text-primary hover:underline" href={`/admin/logs?request_log_id=${event.request_log_id}`}>请求 #{event.request_log_id}</a>
+                    ) : event.wallet_hold_id ? (
+                      <a className="text-primary hover:underline" href={`/admin/billing-events?wallet_hold_id=${event.wallet_hold_id}`}>Hold #{event.wallet_hold_id}</a>
+                    ) : (
+                      "-"
+                    )}
                   </td>
                   <td className="px-3 py-3 text-xs text-muted-foreground max-w-xs truncate" title={event.note || ""}>{event.note || "-"}</td>
                 </tr>

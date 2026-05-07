@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,6 +34,12 @@ type RequestLog struct {
 
 type LogStore struct {
 	db *pgxpool.Pool
+}
+
+type RequestLogListFilter struct {
+	RequestLogID *int64
+	Limit        int
+	Offset       int
 }
 
 func NewLogStore(db *pgxpool.Pool) *LogStore {
@@ -87,16 +94,56 @@ type UsageSummary struct {
 }
 
 func (s *LogStore) ListAll(ctx context.Context, limit, offset int) ([]RequestLog, error) {
-	rows, err := s.db.Query(ctx,
-		`SELECT id, user_id, api_key_id, channel_id, wallet_hold_id, model, request_method, request_path, status_code, input_tokens, output_tokens, cost, reserved_amount, latency_ms, error_message, ip_address, billing_status, billing_note, estimated_tokens, created_at
-				 FROM request_logs ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-		limit, offset,
-	)
+	query, args := BuildRequestLogListQuery(RequestLogListFilter{Limit: limit, Offset: offset})
+	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list logs: %w", err)
 	}
 	defer rows.Close()
 
+	return scanRequestLogs(rows)
+}
+
+func (s *LogStore) ListAllFiltered(ctx context.Context, filter RequestLogListFilter) ([]RequestLog, error) {
+	query, args := BuildRequestLogListQuery(filter)
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list logs: %w", err)
+	}
+	defer rows.Close()
+
+	return scanRequestLogs(rows)
+}
+
+func BuildRequestLogListQuery(filter RequestLogListFilter) (string, []any) {
+	args := make([]any, 0, 3)
+	conditions := make([]string, 0, 1)
+
+	if filter.RequestLogID != nil {
+		args = append(args, *filter.RequestLogID)
+		conditions = append(conditions, fmt.Sprintf("id = $%d", len(args)))
+	}
+
+	query := `SELECT id, user_id, api_key_id, channel_id, wallet_hold_id, model, request_method, request_path, status_code, input_tokens, output_tokens, cost, reserved_amount, latency_ms, error_message, ip_address, billing_status, billing_note, estimated_tokens, created_at
+				 FROM request_logs`
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	args = append(args, filter.Limit)
+	limitPlaceholder := len(args)
+	args = append(args, filter.Offset)
+	offsetPlaceholder := len(args)
+	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", limitPlaceholder, offsetPlaceholder)
+
+	return query, args
+}
+
+func scanRequestLogs(rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}) ([]RequestLog, error) {
 	var logs []RequestLog
 	for rows.Next() {
 		var l RequestLog
@@ -107,6 +154,9 @@ func (s *LogStore) ListAll(ctx context.Context, limit, offset int) ([]RequestLog
 			return nil, fmt.Errorf("failed to scan log: %w", err)
 		}
 		logs = append(logs, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate logs: %w", err)
 	}
 	return logs, nil
 }
