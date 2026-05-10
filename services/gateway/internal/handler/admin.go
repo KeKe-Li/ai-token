@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -341,13 +342,19 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 // ===== 全局日志和统计 =====
 
 func (h *AdminHandler) GlobalLogs(c *gin.Context) {
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	if limit > 100 {
-		limit = 100
+	limit, offset := parseListPagination(c)
+
+	requestLogID, ok := parseOptionalPositiveInt64(c.Query("request_log_id"))
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 request_log_id"})
+		return
 	}
 
-	logs, err := h.logStore.ListAll(c.Request.Context(), limit, offset)
+	logs, err := h.logStore.ListAllFiltered(c.Request.Context(), model.RequestLogListFilter{
+		RequestLogID: requestLogID,
+		Limit:        limit,
+		Offset:       offset,
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取日志失败"})
 		return
@@ -356,6 +363,18 @@ func (h *AdminHandler) GlobalLogs(c *gin.Context) {
 		logs = []model.RequestLog{}
 	}
 	c.JSON(http.StatusOK, gin.H{"data": logs})
+}
+
+func parseOptionalPositiveInt64(raw string) (*int64, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, true
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || parsed <= 0 {
+		return nil, false
+	}
+	return &parsed, true
 }
 
 func (h *AdminHandler) WalletTransactions(c *gin.Context) {

@@ -3,16 +3,25 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
-type LogEntry = { id: number; user_id: number; model: string; status_code: number; input_tokens: number; output_tokens: number; cost: number; reserved_amount?: number; latency_ms: number; ip_address: string; billing_status: string; billing_note?: string; estimated_tokens: boolean; created_at: string };
+type LogEntry = { id: number; user_id: number; wallet_hold_id?: number; model: string; status_code: number; input_tokens: number; output_tokens: number; cost: number; reserved_amount?: number; latency_ms: number; ip_address: string; billing_status: string; billing_note?: string; estimated_tokens: boolean; created_at: string };
 
 export default function AdminLogsPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [requestLogID, setRequestLogID] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
-    api.get<{ data: LogEntry[] }>("/api/admin/logs?limit=50", token)
+
+    const params = new URLSearchParams({ limit: "50" });
+    const drillDownID = new URLSearchParams(window.location.search).get("request_log_id");
+    if (drillDownID) {
+      params.set("request_log_id", drillDownID);
+      setRequestLogID(drillDownID);
+    }
+
+    api.get<{ data: LogEntry[] }>(`/api/admin/logs?${params.toString()}`, token)
       .then((res) => setLogs(res.data || []))
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -22,6 +31,14 @@ export default function AdminLogsPage() {
     <div>
       <h2 className="text-2xl font-bold">全局日志</h2>
       <p className="mt-1 text-sm text-muted-foreground">查看所有用户的 API 调用记录</p>
+
+      {requestLogID && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
+          <span className="text-muted-foreground">当前 drill-down：</span>
+          <span className="font-mono text-primary">请求日志 #{requestLogID}</span>
+          <a className="text-primary hover:underline" href="/admin/logs">清除过滤</a>
+        </div>
+      )}
 
       <div className="mt-6">
         {loading ? (
@@ -36,6 +53,7 @@ export default function AdminLogsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="px-3 py-3 text-left font-medium">ID</th>
                   <th className="px-3 py-3 text-left font-medium">时间</th>
                   <th className="px-3 py-3 text-left font-medium">用户</th>
                   <th className="px-3 py-3 text-left font-medium">模型</th>
@@ -44,6 +62,7 @@ export default function AdminLogsPage() {
                   <th className="px-3 py-3 text-right font-medium">预授权</th>
                   <th className="px-3 py-3 text-right font-medium">延迟</th>
                   <th className="px-3 py-3 text-center font-medium">计费</th>
+                  <th className="px-3 py-3 text-left font-medium">关联</th>
                   <th className="px-3 py-3 text-left font-medium">IP</th>
                   <th className="px-3 py-3 text-center font-medium">状态</th>
                 </tr>
@@ -51,6 +70,9 @@ export default function AdminLogsPage() {
               <tbody>
                 {logs.map((log) => (
                   <tr key={log.id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                    <td className="px-3 py-3 font-mono text-xs">
+                      <a className="text-primary hover:underline" href={`/admin/logs?request_log_id=${log.id}`}>#{log.id}</a>
+                    </td>
                     <td className="px-3 py-3 text-muted-foreground whitespace-nowrap text-xs">
                       {new Date(log.created_at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     </td>
@@ -61,6 +83,13 @@ export default function AdminLogsPage() {
                     <td className="px-3 py-3 text-right text-muted-foreground text-xs">¥{((log.reserved_amount ?? 0) / 1000).toFixed(4)}</td>
                     <td className="px-3 py-3 text-right text-muted-foreground text-xs">{log.latency_ms}ms</td>
                     <td className="px-3 py-3 text-center"><BillingBadge status={log.billing_status} estimated={log.estimated_tokens} note={log.billing_note} /></td>
+                    <td className="px-3 py-3 text-xs">
+                      {log.wallet_hold_id ? (
+                        <a className="text-primary hover:underline" href={`/admin/billing-events?wallet_hold_id=${log.wallet_hold_id}`}>Hold #{log.wallet_hold_id}</a>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 text-muted-foreground text-xs">{log.ip_address}</td>
                     <td className="px-3 py-3 text-center">
                       <span className={`rounded-full px-2 py-0.5 text-xs ${log.status_code === 200 ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"}`}>
