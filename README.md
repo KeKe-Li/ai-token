@@ -124,7 +124,7 @@ ai-token/
 |----------|--------|--------|
 | OpenAI | GPT-5.5, GPT-5.5 | Native (passthrough) |
 | Anthropic | Claude Sonnet 4.8, Claude opu5 | Messages API → OpenAI |
-| Google | Gemini 2.5 Pro, Gemini 2.5 Flash | Gemini API → OpenAI |
+| Google | Gemini 2.5 Pro, Gemini 3.5 Flash | Gemini API → OpenAI |
 | DeepSeek | deepseek-v4-flash,deepseek-v4-pro | OpenAI-compatible |
 
 ## Environment Variables
