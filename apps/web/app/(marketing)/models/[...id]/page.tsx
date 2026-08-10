@@ -1,34 +1,23 @@
 import { notFound } from "next/navigation";
-
-type Model = {
-  model_id: string;
-  display_name: string;
-  provider: string;
-  category: string;
-  context_length: number;
-  input_price: number;
-  output_price: number;
-  price_unit: string;
-  capabilities: string[];
-  description: string;
-};
+import { FALLBACK_MODELS, PROVIDER_LABELS, type Model } from "@/lib/fallback-models";
 
 async function getModel(id: string): Promise<Model | null> {
   try {
     const apiUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-    const res = await fetch(`${apiUrl}/api/admin/models`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const models: Model[] = data.data || [];
-    return models.find((m) => m.model_id === id) || null;
+    const res = await fetch(`${apiUrl}/api/public/models/${id}`, { next: { revalidate: 300 } });
+    if (!res.ok) throw new Error("api failed");
+    const json = await res.json();
+    return json.data || null;
   } catch {
-    return null;
+    return FALLBACK_MODELS.find((m) => m.model_id === id) || null;
   }
 }
 
-export default async function ModelDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ModelDetailPage({ params }: { params: Promise<{ id: string[] }> }) {
   const { id } = await params;
-  const model = await getModel(id);
+  // catch-all 路由：含斜杠的 model_id（如 deepseek/deepseek-v4-pro）会拆成多段，拼回完整 id。
+  const modelId = id.join("/");
+  const model = await getModel(modelId);
 
   if (!model) {
     notFound();
@@ -45,11 +34,11 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
           <h1 className="text-3xl font-bold">{model.display_name}</h1>
           <div className="mt-2 flex items-center gap-3">
             <span className="rounded-md bg-primary/10 px-2 py-0.5 text-sm text-primary">
-              {model.provider}
+              {PROVIDER_LABELS[model.provider] ?? model.provider}
             </span>
             <span className="text-sm text-muted-foreground">{model.category.toUpperCase()}</span>
             <span className="text-sm text-muted-foreground">
-              {(model.context_length / 1000)}K 上下文
+              {(model.context_length / 1000).toFixed(0)}K 上下文
             </span>
           </div>
         </div>

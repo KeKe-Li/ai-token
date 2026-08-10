@@ -2,19 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-
-type Model = {
-  model_id: string;
-  display_name: string;
-  provider: string;
-  category: string;
-  context_length: number;
-  input_price: number;
-  output_price: number;
-  price_unit: string;
-  capabilities: string[];
-  description: string;
-};
+import { FALLBACK_MODELS, PROVIDER_LABELS, type Model } from "@/lib/fallback-models";
 
 const PROVIDERS = ["all", "openai", "anthropic", "google", "deepseek"] as const;
 
@@ -25,25 +13,13 @@ const PROVIDER_COLORS: Record<string, string> = {
   deepseek: "bg-purple-500/10 text-purple-400 border-purple-500/20",
 };
 
-const FALLBACK_MODELS: Model[] = [
-  { model_id: "gpt-4o", display_name: "GPT-4o", provider: "openai", category: "llm", context_length: 128000, input_price: 2500, output_price: 10000, price_unit: "1M", capabilities: ["vision", "function_call", "streaming"], description: "最新 GPT-4o 多模态模型" },
-  { model_id: "gpt-4o-mini", display_name: "GPT-4o Mini", provider: "openai", category: "llm", context_length: 128000, input_price: 150, output_price: 600, price_unit: "1M", capabilities: ["vision", "function_call", "streaming"], description: "轻量级 GPT-4o,性价比高" },
-  { model_id: "claude-sonnet-4-6", display_name: "Claude Sonnet 4.6", provider: "anthropic", category: "llm", context_length: 200000, input_price: 3000, output_price: 15000, price_unit: "1M", capabilities: ["vision", "function_call", "streaming", "thinking"], description: "Anthropic 最新编程模型" },
-  { model_id: "claude-haiku-4-5", display_name: "Claude Haiku 4.5", provider: "anthropic", category: "llm", context_length: 200000, input_price: 800, output_price: 4000, price_unit: "1M", capabilities: ["vision", "function_call", "streaming"], description: "Anthropic 轻量快速模型" },
-  { model_id: "gemini-2.5-pro", display_name: "Gemini 2.5 Pro", provider: "google", category: "llm", context_length: 1000000, input_price: 1250, output_price: 10000, price_unit: "1M", capabilities: ["vision", "function_call", "streaming", "thinking"], description: "Google 最新旗舰模型,100万上下文" },
-  { model_id: "gemini-2.5-flash", display_name: "Gemini 2.5 Flash", provider: "google", category: "llm", context_length: 1000000, input_price: 150, output_price: 600, price_unit: "1M", capabilities: ["vision", "function_call", "streaming"], description: "Google 快速模型" },
-  { model_id: "deepseek-chat", display_name: "DeepSeek V3", provider: "deepseek", category: "llm", context_length: 64000, input_price: 270, output_price: 1100, price_unit: "1M", capabilities: ["function_call", "streaming"], description: "DeepSeek 通用对话模型" },
-  { model_id: "deepseek-reasoner", display_name: "DeepSeek R1", provider: "deepseek", category: "llm", context_length: 64000, input_price: 550, output_price: 2190, price_unit: "1M", capabilities: ["streaming", "thinking"], description: "DeepSeek 深度推理模型" },
-];
-
 export default function ModelsPage() {
   const [models, setModels] = useState<Model[]>(FALLBACK_MODELS);
   const [provider, setProvider] = useState<string>("all");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    api.get<{ data: Model[] }>("/api/admin/models", token || undefined)
+    api.get<{ data: Model[] }>("/api/public/models")
       .then((res) => { if (res.data && res.data.length > 0) setModels(res.data); })
       .catch(() => {});
   }, []);
@@ -85,7 +61,7 @@ export default function ModelsPage() {
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{model.display_name}</h3>
-                <span className={`mt-1 inline-block rounded-md border px-2 py-0.5 text-xs ${PROVIDER_COLORS[model.provider] || "bg-muted text-muted-foreground"}`}>{model.provider}</span>
+                <span className={`mt-1 inline-block rounded-md border px-2 py-0.5 text-xs ${PROVIDER_COLORS[model.provider] || "bg-muted text-muted-foreground"}`}>{PROVIDER_LABELS[model.provider] ?? model.provider}</span>
               </div>
               <span className="text-xs text-muted-foreground">{(model.context_length / 1000).toFixed(0)}K ctx</span>
             </div>

@@ -99,6 +99,15 @@ func Setup(cfg *config.Config, db *pgxpool.Pool, rdb *redis.Client) *gin.Engine 
 	// 内部管理 API
 	api := r.Group("/api")
 	{
+		// 公开接口（无需登录）
+		public := api.Group("/public")
+		if modelStore != nil {
+			publicHandler := handler.NewPublicHandler(modelStore)
+			public.GET("/models", publicHandler.ListModels)
+			// 使用 catch-all，兼容含斜杠的 model_id（如 deepseek/deepseek-v4-pro）
+			public.GET("/models/*id", publicHandler.GetModel)
+		}
+
 		// 认证接口（无需登录）
 		auth := api.Group("/auth")
 		if userStore != nil {
